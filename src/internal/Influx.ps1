@@ -497,6 +497,7 @@ function Get-OwReportInfluxPlayerSnapshots {
                 run_id = ConvertTo-OwReportInfluxRunId -Timestamp $Timestamp
                 rank_roles = @{}
                 hero_categories = @{}
+                rank_season = $null
             }
         }
 

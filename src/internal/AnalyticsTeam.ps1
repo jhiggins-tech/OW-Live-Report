@@ -805,6 +805,28 @@ function Get-OwReportTeamOptimizerModel {
         [object[]]$PlayerAnalyses
     )
 
+    if (@($PlayerAnalyses).Count -eq 0) {
+        return [ordered]@{
+            candidate_players = @()
+            default_locks = @()
+            lineup = $null
+            lineup_score = 0
+            projected_team_kda = $null
+            projected_team_winrate = $null
+            wide_assessment = [ordered]@{
+                label = 'unknown'
+                is_wide = $null
+                spread_divisions = $null
+                threshold = $null
+                reason = 'Need at least five players with competitive history before the team optimizer can build a lineup.'
+                source_url = 'https://overwatch.blizzard.com/en-us/news/24061006/'
+            }
+            wide_rule_summary = 'Need at least five players with competitive history before the team optimizer can build a lineup.'
+            wide_rule_source_url = 'https://overwatch.blizzard.com/en-us/news/24061006/'
+            warnings = @('Need at least five players with competitive history before the team optimizer can build a lineup.')
+        }
+    }
+
     $candidatePlayers = @(
         $PlayerAnalyses | ForEach-Object {
             $latest = $_.latest

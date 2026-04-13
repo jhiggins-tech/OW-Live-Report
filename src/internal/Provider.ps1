@@ -7,7 +7,19 @@ function Get-OwReportExceptionDetail {
 
     $statusCode = $null
     $body = $null
-    $response = $ErrorRecord.Exception.Response
+    $response = $null
+
+    try {
+        if ($null -ne $ErrorRecord -and $null -ne $ErrorRecord.Exception) {
+            $exceptionPropertyNames = @($ErrorRecord.Exception.PSObject.Properties | Select-Object -ExpandProperty Name)
+            if ($exceptionPropertyNames -contains 'Response') {
+                $response = $ErrorRecord.Exception.Response
+            }
+        }
+    }
+    catch {
+        $response = $null
+    }
 
     if ($null -ne $response) {
         try {

@@ -100,6 +100,12 @@ notepad .\config\team.sample.json
 powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
 ```
 
+Or use the short helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\refresh-site-data.ps1
+```
+
 ### 4. Open the publishable preview
 
 ```powershell
@@ -272,7 +278,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 Use this pattern:
 
 1. edit roster if needed
-2. run the report
+2. run `powershell -ExecutionPolicy Bypass -File .\refresh-site-data.ps1`
 3. open `docs/index.html`
 4. sanity-check the site
 5. commit the updated `docs/` folder
