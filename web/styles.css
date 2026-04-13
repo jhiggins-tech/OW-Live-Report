@@ -325,6 +325,16 @@ h3 {
 .badge.up { color: var(--good); border-color: rgba(89, 225, 156, 0.3); }
 .badge.flat { color: var(--warn); border-color: rgba(255, 191, 91, 0.3); }
 .badge.down { color: var(--bad); border-color: rgba(255, 112, 112, 0.28); }
+.badge.live {
+  color: var(--sky);
+  border-color: rgba(89, 194, 255, 0.38);
+  background: rgba(89, 194, 255, 0.08);
+}
+.badge.fallback {
+  color: var(--amber);
+  border-color: rgba(255, 184, 79, 0.34);
+  background: rgba(255, 184, 79, 0.08);
+}
 
 .player-grid {
   display: grid;

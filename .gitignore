@@ -1,5 +1,7 @@
 cache/
 data/
+!docs/data/
+!docs/data/site-model.json
 logs/
 output/
 tmp/

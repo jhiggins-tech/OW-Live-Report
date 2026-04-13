@@ -26,7 +26,8 @@ function Invoke-OwReportRun {
             -Snapshots $dataset.snapshots `
             -RunRecords $dataset.run_records
         $published = Publish-OwReportSite -Config $config -SiteModel $siteModel -RunContext $runContext
-        Write-OwReportLog -RunContext $runContext -Message ("Finished run {0}. Latest report: {1}" -f $runContext.run_id, $published.latest_index)
+        $reportIndex = Get-OwReportObjectValue -Object $published -Path @('docs_index') -Default $published.latest_index
+        Write-OwReportLog -RunContext $runContext -Message ("Finished run {0}. Latest report: {1}" -f $runContext.run_id, $reportIndex)
 
         $latestDatasetRun = @($dataset.run_records | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' } | Select-Object -Last 1)
         $latestSuccessfulPlayers = 0
@@ -39,7 +40,7 @@ function Invoke-OwReportRun {
 
         return [ordered]@{
             run_id = $runContext.run_id
-            latest_index = $published.latest_index
+            latest_index = $reportIndex
             successful_players = $latestSuccessfulPlayers
             failed_players = @($dataset.failed_players)
         }
@@ -101,18 +102,21 @@ function Invoke-OwReportRun {
 
     $siteModel = Get-OwReportTeamAnalytics -Config $config -Storage $storage -RunContext $runContext -HeroCatalog $heroCatalog
     $published = Publish-OwReportSite -Config $config -SiteModel $siteModel -RunContext $runContext
+    $reportIndex = Get-OwReportObjectValue -Object $published -Path @('docs_index') -Default $published.latest_index
 
     $runRecord.output = [ordered]@{
         run_output_dir = $published.run_output_dir
         latest_output_dir = $published.latest_output_dir
-        latest_index = $published.latest_index
+        latest_index = $reportIndex
+        docs_output_dir = Get-OwReportObjectValue -Object $published -Path @('docs_output_dir')
+        docs_index = Get-OwReportObjectValue -Object $published -Path @('docs_index')
     }
     Save-OwReportRunRecord -Storage $storage -RunRecord $runRecord
-    Write-OwReportLog -RunContext $runContext -Message ("Finished run {0}. Latest report: {1}" -f $runContext.run_id, $published.latest_index)
+    Write-OwReportLog -RunContext $runContext -Message ("Finished run {0}. Latest report: {1}" -f $runContext.run_id, $reportIndex)
 
     return [ordered]@{
         run_id = $runContext.run_id
-        latest_index = $published.latest_index
+        latest_index = $reportIndex
         successful_players = $successfulPlayers
         failed_players = $failedPlayers
     }

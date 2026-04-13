@@ -1106,10 +1106,26 @@ function Get-OwReportTeamAnalytics {
         }
     )
 
+    $providerName = Get-OwReportObjectValue -Object $Config -Path @('provider', 'name') -Default 'overfast'
+    $livePlayers = @(
+        foreach ($player in @($Config.players)) {
+            [ordered]@{
+                battle_tag = Get-OwReportObjectValue -Object $player -Path @('battle_tag')
+                player_id = Get-OwReportObjectValue -Object $player -Path @('player_id')
+                slug = Get-OwReportObjectValue -Object $player -Path @('slug')
+                display_name = Get-OwReportObjectValue -Object $player -Path @('display_name')
+                notes = Get-OwReportObjectValue -Object $player -Path @('notes')
+                hidden_heroes = @((Get-OwReportObjectValue -Object $player -Path @('hidden_heroes') -Default @()))
+                locked_role = Get-OwReportObjectValue -Object $player -Path @('locked_role')
+            }
+        }
+    )
+
     return [ordered]@{
         meta = [ordered]@{
             team_name = $Config.team_name
             site_subtitle = $Config.site_subtitle
+            provider_name = $providerName
             generated_at = Get-OwReportIsoNow
             config_path = Get-OwReportObjectValue -Object $Config -Path @('config_path')
             project_root = Get-OwReportObjectValue -Object $Config -Path @('project_root')
@@ -1123,6 +1139,21 @@ function Get-OwReportTeamAnalytics {
             fresh_snapshots = $freshCount
             player_count_with_history = $playerCards.Count
             stat_scope = 'competitive-only'
+            live_mode = $false
+            source_mode = $(if ($providerName -eq 'influxdb') { 'embedded-fallback' } else { 'embedded-snapshot' })
+            live_refresh_message = $(if ($providerName -eq 'influxdb') { 'Showing the embedded snapshot. Published sites can also read a same-origin snapshot file without changing the page code.' } else { $null })
+            live_source = [ordered]@{
+                enabled = ($providerName -eq 'influxdb')
+                provider = $providerName
+                query_url = Get-OwReportObjectValue -Object $Config -Path @('provider', 'query_url')
+                database = Get-OwReportObjectValue -Object $Config -Path @('provider', 'database')
+                request_delay_ms = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $Config -Path @('provider', 'request_delay_ms') -Default 125) -Default 125
+                browser_refresh_enabled = $false
+                ui = [ordered]@{
+                    top_hero_count = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $Config -Path @('ui', 'top_hero_count') -Default 6) -Default 6
+                }
+                players = $livePlayers
+            }
         }
         overview = [ordered]@{
             stat_cards = @(

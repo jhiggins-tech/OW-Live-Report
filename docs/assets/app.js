@@ -392,6 +392,38 @@
       )
       .join("");
 
+  const getDataSourceStatus = (meta) => {
+    if (meta?.source_mode === "live" || meta?.live_mode) {
+      return {
+        label: "Live Server",
+        className: "live",
+        detail: "Reading fresh data directly from the hosted stats server.",
+      };
+    }
+
+    if (meta?.source_mode === "published-snapshot") {
+      return {
+        label: "Published Snapshot",
+        className: "live",
+        detail: "Reading the uploaded snapshot file that sits beside this published site.",
+      };
+    }
+
+    if (meta?.source_mode === "embedded-fallback" || meta?.live_source?.enabled) {
+      return {
+        label: "Fallback Snapshot",
+        className: "fallback",
+        detail: "Showing the embedded report data that was baked into this page.",
+      };
+    }
+
+    return {
+      label: "Static Snapshot",
+      className: "flat",
+      detail: "Showing the generated report data saved into this page.",
+    };
+  };
+
   const roleLabel = (value) => {
     if (!value) return "";
     if (value === "damage") return "DPS";
@@ -987,12 +1019,16 @@
     const validPlayerSlugs = new Set((payload.players || []).map((player) => player.slug).filter(Boolean));
     hiddenPlayerSlugs = hiddenPlayerSlugs.filter((slug) => validPlayerSlugs.has(slug));
     const { meta, overview } = buildOverviewView(payload, removedRunIds, hiddenPlayerSlugs);
+    const sourceStatus = getDataSourceStatus(meta);
     document.getElementById("hero-meta").innerHTML = `
+      <div class="meta-line"><span class="badge ${escapeHtml(sourceStatus.className)}">${escapeHtml(sourceStatus.label)}</span></div>
+      <div class="meta-line">${escapeHtml(sourceStatus.detail)}</div>
       <div class="meta-line">Generated ${escapeHtml(fmtDate(meta.generated_at))}</div>
       <div class="meta-line">Latest visible run: ${escapeHtml(meta.latest_run?.run_id || "n/a")}</div>
       <div class="meta-line">Scope: ${escapeHtml(meta.stat_scope || "competitive-only")}</div>
       <div class="meta-line">Queue context: ${escapeHtml(meta.latest_run?.wide_match_context || "mixed")}</div>
       <div class="meta-line">Fresh snapshots: ${escapeHtml(meta.fresh_snapshots)}</div>
+      ${meta.live_refresh_message ? `<div class="meta-line">${escapeHtml(meta.live_refresh_message)}</div>` : ""}
       <div class="meta-line">Removed runs: ${escapeHtml(removedRunIds.length)}</div>
       <div class="meta-line">Hidden players: ${escapeHtml(hiddenPlayerSlugs.length)}</div>
     `;
@@ -1584,6 +1620,123 @@
     };
   };
 
+  const getStandardDeviation = (values) => {
+    const numbers = (values || [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+    if (!numbers.length) return 0;
+    const mean = numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+    const variance = numbers.reduce((sum, value) => sum + (value - mean) ** 2, 0) / numbers.length;
+    return Math.sqrt(variance);
+  };
+
+  const getHeroRecommendationsFromSnapshots = (snapshots) => {
+    const orderedSnapshots = [...(snapshots || [])].sort((left, right) => new Date(left.captured_at) - new Date(right.captured_at));
+    if (!orderedSnapshots.length) {
+      return { comfort: [], growth: [], avoid: [] };
+    }
+
+    const latestSnapshot = orderedSnapshots[orderedSnapshots.length - 1];
+    const preferredRole = latestSnapshot?.preferred_role || getPreferredRoleFromRoles(latestSnapshot?.roles || [], latestSnapshot?.ranks || {});
+    const heroKeys = [...(latestSnapshot?.heroes || [])]
+      .sort((left, right) => numericValue(right.time_played_seconds) - numericValue(left.time_played_seconds))
+      .map((hero) => hero.hero_key);
+    const comfort = [];
+    const growth = [];
+    const avoid = [];
+
+    heroKeys.forEach((heroKey) => {
+      const latestHero = (latestSnapshot.heroes || []).find((hero) => hero.hero_key === heroKey);
+      if (!latestHero) return;
+
+      const kdaSeries = buildHeroSeriesFromSnapshots(orderedSnapshots, [heroKey], "kda", false)[0]?.series || [];
+      const winSeries = buildHeroSeriesFromSnapshots(orderedSnapshots, [heroKey], "winrate", false)[0]?.series || [];
+      const kdaTrend = getTimeSeriesTrend(getWindowedSeries(kdaSeries, 30, 2, 4), 0.01, 1);
+      const winTrend = getTimeSeriesTrend(getWindowedSeries(winSeries, 30, 2, 4), 0.12, 1);
+
+      const gamesPlayed = numericValue(latestHero.games_played);
+      const timePlayed = numericValue(latestHero.time_played_seconds);
+      const latestHeroKda = numericValue(latestHero.kda);
+      const latestHeroWinrate = numericValue(latestHero.winrate);
+      const latestHeroElims = numericValue(latestHero.average?.eliminations);
+      const latestHeroDeaths = numericValue(latestHero.average?.deaths);
+
+      const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+      const kdaNorm = clamp((latestHeroKda - 1.0) / 2.6);
+      const winNorm = clamp((latestHeroWinrate - 45.0) / 25.0);
+      const elimNorm = clamp(latestHeroElims / 20.0);
+      const survivability = clamp((12.0 - latestHeroDeaths) / 6.0);
+      const sampleNorm = clamp(Math.max(gamesPlayed / 20.0, timePlayed / 7200.0));
+      let consistency = 0.55;
+      const kdaValues = kdaSeries
+        .map((point) => point.value)
+        .filter((value) => value !== null && value !== undefined);
+      if (kdaValues.length >= 3) {
+        const kdaStd = getStandardDeviation(kdaValues);
+        consistency = clamp(1.0 - kdaStd / Math.max(latestHeroKda, 1.0));
+      }
+
+      const trendNorm = clamp(0.5 + (kdaTrend.slope_per_day / 0.03) * 0.3 + (winTrend.slope_per_day / 0.3) * 0.2);
+      const roleBonus = latestHero.hero_role === preferredRole ? 0.04 : 0.0;
+      const score = Number(
+        (
+          kdaNorm * 0.25 +
+          winNorm * 0.28 +
+          elimNorm * 0.08 +
+          survivability * 0.12 +
+          sampleNorm * 0.12 +
+          consistency * 0.07 +
+          trendNorm * 0.08 +
+          roleBonus
+        ).toFixed(3)
+      );
+
+      const entry = {
+        hero_key: heroKey,
+        hero_name: latestHero.hero_name,
+        hero_role: latestHero.hero_role,
+        score,
+        games_played: latestHero.games_played,
+        time_played_seconds: latestHero.time_played_seconds,
+        winrate: latestHero.winrate,
+        kda: latestHero.kda,
+        reason: "",
+      };
+
+      if ((gamesPlayed >= 8 || timePlayed >= 2400) && score >= 0.62) {
+        entry.reason = "Strong sample, reliable KDA, and stable results.";
+        comfort.push(entry);
+        return;
+      }
+
+      if (
+        (gamesPlayed >= 5 || timePlayed >= 1800) &&
+        (score < 0.42 || (latestHeroWinrate < 45 && latestHeroKda < 1.25 && kdaTrend.direction === "down"))
+      ) {
+        entry.reason = "Low return from repeated usage compared with other options.";
+        avoid.push(entry);
+        return;
+      }
+
+      if ((gamesPlayed >= 3 || timePlayed >= 900) && (kdaTrend.direction === "up" || winTrend.direction === "up" || score >= 0.48)) {
+        entry.reason = "Promising trend with enough recent reps to keep exploring.";
+        growth.push(entry);
+      }
+    });
+
+    return {
+      comfort: comfort.sort((left, right) => numericValue(right.score) - numericValue(left.score)).slice(0, 3),
+      growth: growth.sort((left, right) => numericValue(right.score) - numericValue(left.score)).slice(0, 3),
+      avoid: avoid
+        .sort((left, right) => {
+          const scoreDelta = numericValue(left.score) - numericValue(right.score);
+          if (scoreDelta !== 0) return scoreDelta;
+          return numericValue(right.games_played) - numericValue(left.games_played);
+        })
+        .slice(0, 3),
+    };
+  };
+
   const filterRecommendations = (recommendations, hiddenHeroSet) => ({
     comfort: (recommendations?.comfort || []).filter((item) => !hiddenHeroSet.has(item.hero_key)),
     growth: (recommendations?.growth || []).filter((item) => !hiddenHeroSet.has(item.hero_key)),
@@ -1593,6 +1746,8 @@
   const buildPlayerViewModel = (player, hiddenHeroKeys = [], excludedRunIds = []) => {
     const hiddenHeroSet = new Set(hiddenHeroKeys || []);
     const excludedRunSet = new Set(excludedRunIds || []);
+    const baseCurrent = player?.current || {};
+    const baseRanks = player?.ranks || { roles: [] };
     const rawSnapshots = [...(player.history_snapshots || [])]
       .filter((snapshot) => !excludedRunSet.has(snapshot.run_id))
       .sort((left, right) => new Date(left.captured_at) - new Date(right.captured_at));
@@ -1619,7 +1774,7 @@
         },
         delta: { kda: 0, winrate: 0, rank_ordinal: 0 },
         highlights: { best_kda_hero: null, best_winrate_hero: null },
-        recommendations: filterRecommendations(player.recommendations, hiddenHeroSet),
+        recommendations: filterRecommendations(player.recommendations || { comfort: [], growth: [], avoid: [] }, hiddenHeroSet),
         narrative: `${player.display_name} has no visible snapshots after the current run filters.`,
         flags: ["All visible runs for this player are currently removed on the settings page."],
         top_heroes: [],
@@ -1713,7 +1868,10 @@
           : 0,
     };
     const highlights = getHeroHighlightsFromHeroes(latestSnapshot?.heroes || []);
-    const recommendations = filterRecommendations(player.recommendations, hiddenHeroSet);
+    const recommendations = filterRecommendations(
+      player.recommendations || getHeroRecommendationsFromSnapshots(snapshots),
+      hiddenHeroSet
+    );
     const activeHiddenHeroNames = latestAvailableHeroes
       .filter((hero) => hiddenHeroSet.has(hero.hero_key))
       .map((hero) => hero.hero_name);
@@ -1734,18 +1892,18 @@
           games_won: latestSnapshot.metrics.games_won,
           games_lost: latestSnapshot.metrics.games_lost,
           time_played_seconds: latestSnapshot.metrics.time_played_seconds,
-          rank_label: latestSnapshot.ranks?.best_label || player.current.rank_label,
-          rank_ordinal: latestSnapshot.ranks?.average_ordinal ?? player.current.rank_ordinal,
-          rank_roles: latestSnapshot.ranks?.roles || player.current.rank_roles || [],
-          preferred_role: latestSnapshot.preferred_role || player.current.preferred_role,
-          best_rank_role: latestSnapshot.ranks?.best_role || player.current.best_rank_role,
+          rank_label: latestSnapshot.ranks?.best_label || baseCurrent.rank_label || "Unranked",
+          rank_ordinal: latestSnapshot.ranks?.average_ordinal ?? baseCurrent.rank_ordinal ?? null,
+          rank_roles: latestSnapshot.ranks?.roles || baseCurrent.rank_roles || [],
+          preferred_role: latestSnapshot.preferred_role || baseCurrent.preferred_role || "flex",
+          best_rank_role: latestSnapshot.ranks?.best_role || baseCurrent.best_rank_role || "flex",
         }
-      : player.current;
+      : baseCurrent;
 
     return {
       ...player,
       current,
-      ranks: latestSnapshot?.ranks || player.ranks,
+      ranks: latestSnapshot?.ranks || baseRanks,
       roles: latestSnapshot?.roles || [],
       heroes: latestSnapshot?.heroes || [],
       trend,
@@ -2141,13 +2299,17 @@
       const view = buildPlayerViewModel(player, hiddenHeroKeys, removedRunIds);
       const latestCapturedAt = view.latest_snapshot?.captured_at || player.latest_run.captured_at;
       const latestQueueContext = view.latest_snapshot?.wide_match_context || player.latest_run.wide_match_context;
+      const sourceStatus = getDataSourceStatus(meta);
 
       document.getElementById("player-meta").innerHTML = `
+        <div class="meta-line"><span class="badge ${escapeHtml(sourceStatus.className)}">${escapeHtml(sourceStatus.label)}</span></div>
+        <div class="meta-line">${escapeHtml(sourceStatus.detail)}</div>
         <div class="meta-line">Captured ${escapeHtml(fmtDate(latestCapturedAt))}</div>
         <div class="meta-line">Scope: competitive-only</div>
         <div class="meta-line">Forecast: ${escapeHtml(view.trend.forecast)}</div>
         <div class="meta-line">Confidence: ${escapeHtml(fmtPercent(view.trend.confidence * 100, 0))}</div>
         <div class="meta-line">Queue context: ${escapeHtml(latestQueueContext)}</div>
+        ${meta.live_refresh_message ? `<div class="meta-line">${escapeHtml(meta.live_refresh_message)}</div>` : ""}
         <div class="meta-line">Removed runs active: ${escapeHtml(removedRunIds.length)}</div>
       `;
 
@@ -2524,12 +2686,16 @@
       const removedRunSet = new Set(removedRunIds);
       const visibleCount = runs.filter((run) => !removedRunSet.has(run.run_id)).length;
       const latestVisibleRun = runs.find((run) => !removedRunSet.has(run.run_id)) || null;
+      const sourceStatus = getDataSourceStatus(meta);
 
       document.getElementById("settings-meta").innerHTML = `
+        <div class="meta-line"><span class="badge ${escapeHtml(sourceStatus.className)}">${escapeHtml(sourceStatus.label)}</span></div>
+        <div class="meta-line">${escapeHtml(sourceStatus.detail)}</div>
         <div class="meta-line">Team: ${escapeHtml(meta.team_name)}</div>
         <div class="meta-line">Total snapshots: ${escapeHtml(runs.length)}</div>
         <div class="meta-line">Visible snapshots: ${escapeHtml(visibleCount)}</div>
         <div class="meta-line">Hidden snapshots: ${escapeHtml(removedRunIds.length)}</div>
+        ${meta.live_refresh_message ? `<div class="meta-line">${escapeHtml(meta.live_refresh_message)}</div>` : ""}
         <div class="meta-line">Latest visible snapshot: ${escapeHtml(latestVisibleRun?.run_id || "n/a")}</div>
       `;
 
@@ -2692,11 +2858,902 @@
     draw();
   };
 
-  if (pageData.page === "overview") {
-    renderOverview(pageData.payload);
-  } else if (pageData.page === "player") {
-    renderPlayer(pageData.payload);
-  } else if (pageData.page === "settings") {
-    renderSettings(pageData.payload);
-  }
+  const liveHeroCatalog = {
+    ana: { name: "Ana", role: "support" },
+    ashe: { name: "Ashe", role: "damage" },
+    baptiste: { name: "Baptiste", role: "support" },
+    bastion: { name: "Bastion", role: "damage" },
+    brigitte: { name: "Brigitte", role: "support" },
+    cassidy: { name: "Cassidy", role: "damage" },
+    doomfist: { name: "Doomfist", role: "tank" },
+    dva: { name: "D.Va", role: "tank" },
+    echo: { name: "Echo", role: "damage" },
+    freja: { name: "Freja", role: "damage" },
+    genji: { name: "Genji", role: "damage" },
+    hanzo: { name: "Hanzo", role: "damage" },
+    hazard: { name: "Hazard", role: "tank" },
+    illari: { name: "Illari", role: "support" },
+    "junker-queen": { name: "Junker Queen", role: "tank" },
+    junkrat: { name: "Junkrat", role: "damage" },
+    juno: { name: "Juno", role: "support" },
+    "jetpack-cat": { name: "Jetpack Cat", role: "support" },
+    kiriko: { name: "Kiriko", role: "support" },
+    lifeweaver: { name: "Lifeweaver", role: "support" },
+    lucio: { name: "Lucio", role: "support" },
+    mauga: { name: "Mauga", role: "tank" },
+    mei: { name: "Mei", role: "damage" },
+    mercy: { name: "Mercy", role: "support" },
+    mizuki: { name: "Mizuki", role: "support" },
+    moira: { name: "Moira", role: "support" },
+    orisa: { name: "Orisa", role: "tank" },
+    pharah: { name: "Pharah", role: "damage" },
+    ramattra: { name: "Ramattra", role: "tank" },
+    reaper: { name: "Reaper", role: "damage" },
+    reinhardt: { name: "Reinhardt", role: "tank" },
+    roadhog: { name: "Roadhog", role: "tank" },
+    sigma: { name: "Sigma", role: "tank" },
+    sojourn: { name: "Sojourn", role: "damage" },
+    "soldier-76": { name: "Soldier: 76", role: "damage" },
+    sombra: { name: "Sombra", role: "damage" },
+    symmetra: { name: "Symmetra", role: "damage" },
+    torbjorn: { name: "Torbjorn", role: "damage" },
+    tracer: { name: "Tracer", role: "damage" },
+    venture: { name: "Venture", role: "damage" },
+    widowmaker: { name: "Widowmaker", role: "damage" },
+    winston: { name: "Winston", role: "tank" },
+    "wrecking-ball": { name: "Wrecking Ball", role: "tank" },
+    zarya: { name: "Zarya", role: "tank" },
+    zenyatta: { name: "Zenyatta", role: "support" },
+  };
+
+  const LIVE_CACHE_TTL_MS = 60 * 1000;
+  const deepCloneJson = (value) => JSON.parse(JSON.stringify(value));
+  const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  const getPageFallbackPlayers = (payload) => {
+    if (!payload) return [];
+    if (Array.isArray(payload.players)) return payload.players;
+    if (payload.player) return [payload.player];
+    return [];
+  };
+  const slugifyText = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/#/g, "-")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "player";
+  const escapeInfluxRegex = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prettyHeroName = (heroKey) =>
+    String(heroKey || "")
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  const normalizeInfluxHeroKey = (hero) => {
+    const normalized = String(hero || "").trim().toLowerCase();
+    const special = {
+      "soldier 76": "soldier-76",
+      "soldier: 76": "soldier-76",
+      "wrecking ball": "wrecking-ball",
+      "junker queen": "junker-queen",
+      "all heroes": "all-heroes",
+    };
+    if (special[normalized]) return special[normalized];
+    return normalized.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  };
+  const getLiveHeroName = (heroKey) => liveHeroCatalog[heroKey]?.name || prettyHeroName(heroKey);
+  const getLiveHeroRole = (heroKey) => liveHeroCatalog[heroKey]?.role || "flex";
+  const getLiveCacheKey = (liveConfig) =>
+    `owr-live-site:${liveConfig?.database || "db"}:${liveConfig?.query_url || "query"}:${(liveConfig?.players || [])
+      .map((player) => player.player_id || player.slug || player.display_name)
+      .join("|")}`;
+  const readLiveCache = (liveConfig) => {
+    try {
+      const raw = sessionStorage.getItem(getLiveCacheKey(liveConfig));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.stored_at || !parsed?.site_model) return null;
+      if (Date.now() - Number(parsed.stored_at) > LIVE_CACHE_TTL_MS) return null;
+      return parsed.site_model;
+    } catch (error) {
+      return null;
+    }
+  };
+  const writeLiveCache = (liveConfig, siteModel) => {
+    try {
+      sessionStorage.setItem(
+        getLiveCacheKey(liveConfig),
+        JSON.stringify({
+          stored_at: Date.now(),
+          site_model: siteModel,
+        })
+      );
+    } catch (error) {
+    }
+  };
+  const createLiveClient = (liveConfig) => ({
+    query_url: String(liveConfig?.query_url || "").trim().replace(/\/+$/, ""),
+    database: String(liveConfig?.database || "ow_stats_telegraf").trim(),
+    request_delay_ms: numericValue(liveConfig?.request_delay_ms, 125),
+    last_request_at: 0,
+  });
+  const convertInfluxResponseRows = (payload) => {
+    const rows = [];
+    (payload?.results || []).forEach((result) => {
+      (result?.series || []).forEach((series) => {
+        const columns = series?.columns || [];
+        const tags = series?.tags || {};
+        (series?.values || []).forEach((valueRow) => {
+          const record = { measurement: series?.name };
+          columns.forEach((column, index) => {
+            record[column] = valueRow[index];
+          });
+          Object.keys(tags || {}).forEach((tagName) => {
+            if (record[tagName] === undefined) {
+              record[tagName] = tags[tagName];
+            }
+          });
+          rows.push(record);
+        });
+      });
+    });
+    return rows;
+  };
+  const queryLiveInflux = async (client, query) => {
+    const elapsed = Date.now() - numericValue(client.last_request_at, 0);
+    const waitMs = Math.max(0, numericValue(client.request_delay_ms, 125) - elapsed);
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+    client.last_request_at = Date.now();
+    const url = `${client.query_url}?db=${encodeURIComponent(client.database)}&q=${encodeURIComponent(query)}`;
+    let response;
+    try {
+      response = await fetch(url, { method: "GET" });
+    } catch (error) {
+      return { ok: false, rows: [], error: error?.message || "Network request failed." };
+    }
+
+    const text = await response.text();
+    if (!response.ok) {
+      return {
+        ok: false,
+        rows: [],
+        error: `HTTP ${response.status}: ${text.slice(0, 400)}`,
+      };
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch (error) {
+      return { ok: false, rows: [], error: "Database returned non-JSON data." };
+    }
+
+    return {
+      ok: true,
+      payload,
+      rows: convertInfluxResponseRows(payload),
+      error: null,
+    };
+  };
+  const getInfluxFieldValue = (record, names) => {
+    for (const name of names || []) {
+      const value = record?.[name];
+      if (value !== null && value !== undefined && value !== "") {
+        return value;
+      }
+    }
+    return null;
+  };
+  const convertInfluxCategoryObject = (row) => {
+    const excluded = new Set(["measurement", "time", "player", "platform", "gamemode", "hero", "host"]);
+    const record = {};
+    Object.keys(row || {}).forEach((key) => {
+      if (excluded.has(key)) return;
+      const value = row[key];
+      if (value === null || value === undefined || value === "") return;
+      record[key] = value;
+    });
+    return record;
+  };
+  const convertRankOrdinalFromRaw = (rank) => {
+    if (!rank) return null;
+    let tierName = null;
+    let divisionNumber = null;
+    if (typeof rank === "string") {
+      const match = rank.match(/(bronze|silver|gold|platinum|diamond|master|grandmaster|champion)\s*([1-5])?/i);
+      if (match) {
+        tierName = match[1].toLowerCase();
+        divisionNumber = match[2] ? Number(match[2]) : null;
+      }
+    } else {
+      const tierRaw = rank?.tier;
+      const divisionRaw = rank?.division;
+      const rankRaw = rank?.rank;
+      if (typeof tierRaw === "string" && tierRaw.trim()) {
+        tierName = tierRaw.trim().toLowerCase();
+      } else if (typeof divisionRaw === "string" && divisionRaw.trim()) {
+        tierName = divisionRaw.trim().toLowerCase();
+      } else if (typeof rankRaw === "string" && rankRaw.trim()) {
+        const match = rankRaw.match(/(bronze|silver|gold|platinum|diamond|master|grandmaster|champion)/i);
+        if (match) {
+          tierName = match[1].toLowerCase();
+        }
+      }
+
+      if (Number.isFinite(Number(tierRaw))) {
+        divisionNumber = Number(tierRaw);
+      } else if (Number.isFinite(Number(divisionRaw))) {
+        divisionNumber = Number(divisionRaw);
+      } else if (Number.isFinite(Number(rank?.subdivision))) {
+        divisionNumber = Number(rank.subdivision);
+      }
+    }
+
+    const tierIndexMap = {
+      bronze: 1,
+      silver: 2,
+      gold: 3,
+      platinum: 4,
+      diamond: 5,
+      master: 6,
+      grandmaster: 7,
+      champion: 8,
+    };
+    if (!tierName || !tierIndexMap[tierName]) return null;
+    let division = Number.isFinite(Number(divisionNumber)) ? Number(divisionNumber) : 3;
+    division = Math.max(1, Math.min(5, Math.round(division)));
+    return (tierIndexMap[tierName] - 1) * 5 + (6 - division);
+  };
+  const normalizeLiveRankSummary = (rankSummary) => {
+    const normalizedRoles = [...(rankSummary?.roles || [])]
+      .map((entry) => {
+        const raw = entry?.raw || null;
+        const ordinal = entry?.ordinal ?? convertRankOrdinalFromRaw(raw || entry?.label || null);
+        return {
+          role: entry?.role,
+          label: entry?.label || (ordinal ? formatRankLabelFromOrdinal(ordinal) : "Unranked"),
+          ordinal: ordinal === null || ordinal === undefined ? null : Number(ordinal),
+          raw,
+        };
+      })
+      .filter((entry) => entry.role);
+    const orderedRoles = normalizedRoles.sort((left, right) => {
+      const ordinalDelta = numericValue(right.ordinal, -1) - numericValue(left.ordinal, -1);
+      if (ordinalDelta !== 0) return ordinalDelta;
+      return String(left.role || "").localeCompare(String(right.role || ""));
+    });
+    const ordinals = orderedRoles
+      .map((entry) => entry.ordinal)
+      .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+      .map(Number);
+    const averageOrdinal = ordinals.length
+      ? Number((ordinals.reduce((sum, value) => sum + value, 0) / ordinals.length).toFixed(2))
+      : null;
+    return {
+      platform: rankSummary?.platform || "pc",
+      season: rankSummary?.season ?? null,
+      roles: orderedRoles,
+      average_ordinal: averageOrdinal,
+      best_role: orderedRoles[0]?.role || null,
+      best_label: orderedRoles[0]?.label || "Unranked",
+    };
+  };
+  const buildLiveHeroMetricRecord = (heroKey, heroCategoryMap) => {
+    const game = heroCategoryMap?.game || {};
+    const combat = heroCategoryMap?.combat || {};
+    const assists = heroCategoryMap?.assists || {};
+    const average = heroCategoryMap?.average || {};
+    const gamesPlayed = numericValue(getInfluxFieldValue(game, ["games_played"]), 0);
+    const gamesWon = numericValue(getInfluxFieldValue(game, ["games_won", "hero_wins"]), 0);
+    const gamesLost = numericValue(getInfluxFieldValue(game, ["games_lost"]), 0);
+    const timePlayed = numericValue(getInfluxFieldValue(game, ["time_played"]), 0);
+    const totalEliminations = numericValue(getInfluxFieldValue(combat, ["eliminations"]), 0);
+    const totalAssists = numericValue(getInfluxFieldValue(assists, ["assists"]), 0);
+    const totalDeaths = numericValue(getInfluxFieldValue(combat, ["deaths"]), 0);
+    const totalDamage = numericValue(getInfluxFieldValue(combat, ["all_damage_done", "damage_done"]), 0);
+    const totalHealing = numericValue(getInfluxFieldValue(assists, ["healing_done"]), 0);
+    const explicitWinrate = getInfluxFieldValue(game, ["win_percentage"]);
+    const winrate =
+      explicitWinrate !== null && explicitWinrate !== undefined && explicitWinrate !== ""
+        ? Number(numericValue(explicitWinrate).toFixed(2))
+        : gamesPlayed > 0
+          ? Number(((gamesWon / gamesPlayed) * 100).toFixed(2))
+          : null;
+    const kda =
+      totalDeaths > 0
+        ? Number(((totalEliminations + totalAssists) / totalDeaths).toFixed(2))
+        : totalEliminations + totalAssists > 0
+          ? Number((totalEliminations + totalAssists).toFixed(2))
+          : null;
+
+    if (gamesPlayed <= 0 && timePlayed <= 0 && kda === null && winrate === null) {
+      return null;
+    }
+
+    return {
+      hero_key: heroKey,
+      hero_name: getLiveHeroName(heroKey),
+      hero_role: getLiveHeroRole(heroKey),
+      games_played: gamesPlayed,
+      games_won: gamesWon,
+      games_lost: gamesLost,
+      time_played_seconds: timePlayed,
+      season_games_played: gamesPlayed,
+      season_games_won: gamesWon,
+      season_games_lost: gamesLost,
+      season_time_played_seconds: timePlayed,
+      winrate,
+      kda,
+      total: {
+        eliminations: Number(totalEliminations.toFixed(2)),
+        assists: Number(totalAssists.toFixed(2)),
+        deaths: Number(totalDeaths.toFixed(2)),
+        damage: Number(totalDamage.toFixed(2)),
+        healing: Number(totalHealing.toFixed(2)),
+      },
+      average: {
+        eliminations: getInfluxFieldValue(average, ["eliminations_avg_per_10_min"]),
+        assists: getInfluxFieldValue(average, ["assists_avg_per_10_min"]),
+        deaths: getInfluxFieldValue(average, ["deaths_avg_per_10_min"]),
+        damage: getInfluxFieldValue(average, ["all_damage_done_avg_per_10_min", "damage_done_avg_per_10_min"]),
+        healing: getInfluxFieldValue(average, ["healing_done_avg_per_10_min"]),
+      },
+      career: {
+        assists,
+        average,
+        best: {},
+        combat,
+        game,
+        match_awards: {},
+        hero_specific: {},
+      },
+    };
+  };
+  const buildLivePlaceholderProfile = (displayName, rankSummary, timestamp, summaryRow = null) => {
+    const bestLabel = rankSummary?.best_label || "Unranked";
+    const bestRole = rankSummary?.best_role || "";
+    const roleName = bestRole === "damage" ? "DPS" : bestRole ? roleLabel(bestRole) : "";
+    const fallbackTitle = roleName && bestLabel !== "Unranked" ? `${bestLabel} ${roleName}` : bestLabel;
+    const updatedAtMs = summaryRow?.time ? new Date(summaryRow.time).getTime() : new Date(timestamp).getTime();
+    return {
+      username: summaryRow?.username || displayName,
+      avatar: summaryRow?.avatar || null,
+      namecard: summaryRow?.namecard || null,
+      title: summaryRow?.title || fallbackTitle,
+      endorsement_level: numericValue(summaryRow?.endorsement_level, 0),
+      endorsement_frame: summaryRow?.endorsement_frame || null,
+      last_updated_at: Number.isFinite(updatedAtMs) ? Math.floor(updatedAtMs / 1000) : Math.floor(new Date(timestamp).getTime() / 1000),
+    };
+  };
+  const buildRunIdFromTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return slugifyText(timestamp);
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}-${pad(date.getUTCHours())}${pad(
+      date.getUTCMinutes()
+    )}${pad(date.getUTCSeconds())}`;
+  };
+  const buildWideMatchContextFromSnapshots = (snapshots) => {
+    const assignments = (snapshots || [])
+      .map((snapshot) => {
+        const bestRole = snapshot?.ranks?.best_role;
+        const bestRank = (snapshot?.ranks?.roles || []).find((entry) => entry.role === bestRole);
+        return bestRank?.ordinal !== null && bestRank?.ordinal !== undefined
+          ? { rank_ordinal: Number(bestRank.ordinal) }
+          : null;
+      })
+      .filter(Boolean);
+    if (assignments.length < 2) return "mixed";
+    const assessment = getOptimizerWideAssessment(assignments);
+    if (assessment.label === "wide") return "mostly_wide";
+    if (assessment.label === "narrow") return "mostly_narrow";
+    return "mixed";
+  };
+  const buildLivePlayerRecord = (playerConfig, snapshots, fallbackPayload) => {
+    const orderedSnapshots = [...(snapshots || [])].sort((left, right) => new Date(left.captured_at) - new Date(right.captured_at));
+    const latestSnapshot = orderedSnapshots[orderedSnapshots.length - 1] || null;
+    const topHeroCount = Math.max(3, numericValue(fallbackPayload?.meta?.live_source?.ui?.top_hero_count, 6));
+
+    if (!latestSnapshot) {
+      const fallbackPlayer = getPageFallbackPlayers(fallbackPayload).find((player) => player.slug === playerConfig.slug);
+      if (!fallbackPlayer) {
+        return null;
+      }
+      const cloned = deepCloneJson(fallbackPlayer);
+      const history = [...(cloned.history_snapshots || [])];
+      if (history.length) {
+        const latestHistory = history[history.length - 1];
+        latestHistory.fetch_status = "partial";
+        latestHistory.warnings = [...new Set([...(latestHistory.warnings || []), "Live DB returned no current-season rows for this player, so the embedded fallback view is being shown."])];
+        cloned.history_snapshots = history;
+      }
+      return cloned;
+    }
+
+    return {
+      slug: playerConfig.slug,
+      href: `players/${playerConfig.slug}.html`,
+      display_name: playerConfig.display_name,
+      player_id: playerConfig.player_id,
+      battle_tag: playerConfig.battle_tag,
+      notes: playerConfig.notes || "",
+      profile: latestSnapshot.profile,
+      avatar: latestSnapshot.profile?.avatar || null,
+      title: latestSnapshot.title || latestSnapshot.ranks?.best_label || "Unranked",
+      current: {
+        kda: latestSnapshot.metrics?.kda ?? 0,
+        winrate: latestSnapshot.metrics?.winrate ?? 0,
+        games_played: latestSnapshot.metrics?.games_played ?? 0,
+        games_won: latestSnapshot.metrics?.games_won ?? 0,
+        games_lost: latestSnapshot.metrics?.games_lost ?? 0,
+        time_played_seconds: latestSnapshot.metrics?.time_played_seconds ?? 0,
+        rank_label: latestSnapshot.ranks?.best_label || "Unranked",
+        rank_ordinal: latestSnapshot.ranks?.average_ordinal ?? null,
+        rank_roles: latestSnapshot.ranks?.roles || [],
+        preferred_role: latestSnapshot.normalized?.preferred_role || latestSnapshot.ranks?.best_role || "flex",
+        best_rank_role: latestSnapshot.ranks?.best_role || "flex",
+      },
+      ranks: latestSnapshot.ranks || { roles: [] },
+      roles: latestSnapshot.roles || [],
+      heroes: latestSnapshot.heroes || [],
+      warnings: latestSnapshot.warnings || [],
+      recommendations: getHeroRecommendationsFromSnapshots(orderedSnapshots),
+      latest_run: {
+        run_id: latestSnapshot.run_id,
+        captured_at: latestSnapshot.captured_at,
+        wide_match_context: latestSnapshot.wide_match_context,
+      },
+      customizations: {
+        hidden_hero_names: [],
+        locked_role: normalizeOptimizerLock(playerConfig.locked_role || ""),
+      },
+      history_snapshots: orderedSnapshots.map((snapshot) => deepCloneJson(snapshot)),
+      top_heroes: [...(latestSnapshot.heroes || [])].slice(0, topHeroCount),
+    };
+  };
+  const buildLiveSiteModel = async (liveConfig, fallbackPayload) => {
+    const playerConfigs = [...(liveConfig?.players || [])]
+      .map((player) => ({
+        battle_tag: player.battle_tag || "",
+        player_id: player.player_id || player.battle_tag || "",
+        slug: player.slug || slugifyText(player.display_name || player.player_id || player.battle_tag),
+        display_name: player.display_name || player.battle_tag || player.player_id,
+        notes: player.notes || "",
+        locked_role: normalizeOptimizerLock(player.locked_role || ""),
+      }))
+      .filter((player) => player.player_id);
+    if (!playerConfigs.length) {
+      throw new Error("No tracked players are configured for the live data source.");
+    }
+
+    const client = createLiveClient(liveConfig);
+    const playerRegex = playerConfigs.map((player) => escapeInfluxRegex(player.player_id)).join("|");
+    const playerSummaryByPlayer = new Map();
+
+    const playerSummaryResult = await queryLiveInflux(
+      client,
+      `SELECT last("avatar"),last("endorsement_frame"),last("endorsement_level"),last("namecard"),last("title"),last("username") FROM "player_summary" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player"`
+    );
+    if (playerSummaryResult.ok) {
+      playerSummaryResult.rows.forEach((row) => {
+        if (!row.player) return;
+        playerSummaryByPlayer.set(row.player, {
+          time: row.time,
+          avatar: row.last ?? null,
+          endorsement_frame: row.last_1 ?? null,
+          endorsement_level: row.last_2 ?? 0,
+          namecard: row.last_3 ?? null,
+          title: row.last_4 ?? null,
+          username: row.last_5 ?? null,
+        });
+      });
+    }
+
+    const rankResult = await queryLiveInflux(
+      client,
+      `SELECT "tier","division","season" FROM "competitive_rank" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player","role" ORDER BY time ASC`
+    );
+    if (!rankResult.ok) {
+      throw new Error(`Rank query failed: ${rankResult.error}`);
+    }
+
+    const latestSeasonByPlayer = new Map();
+    rankResult.rows.forEach((row) => {
+      const playerId = row.player;
+      const season = Number(row.season);
+      if (!playerId || !Number.isFinite(season)) return;
+      if (!latestSeasonByPlayer.has(playerId) || season > latestSeasonByPlayer.get(playerId)) {
+        latestSeasonByPlayer.set(playerId, season);
+      }
+    });
+
+    const filteredRankRows = rankResult.rows.filter((row) => latestSeasonByPlayer.get(row.player) === Number(row.season));
+    const seasonStartMsByPlayer = new Map();
+    filteredRankRows.forEach((row) => {
+      const playerId = row.player;
+      const timestampMs = new Date(row.time).getTime();
+      if (!playerId || Number.isNaN(timestampMs)) return;
+      const existing = seasonStartMsByPlayer.get(playerId);
+      if (existing === undefined || timestampMs < existing) {
+        seasonStartMsByPlayer.set(playerId, timestampMs);
+      }
+    });
+
+    const seasonStartValues = [...seasonStartMsByPlayer.values()].filter((value) => Number.isFinite(value));
+    let careerRows = [];
+    if (seasonStartValues.length) {
+      const globalSeasonStartMs = Math.min(...seasonStartValues);
+      const measurementPattern = "career_stats_assists|career_stats_average|career_stats_combat|career_stats_game";
+      const regexQuery = `SELECT * FROM /^(${measurementPattern})$/ WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' AND time >= ${globalSeasonStartMs}ms ORDER BY time ASC`;
+      const careerResult = await queryLiveInflux(client, regexQuery);
+      if (careerResult.ok) {
+        careerRows = careerResult.rows;
+      } else {
+        const measurements = ["career_stats_assists", "career_stats_average", "career_stats_combat", "career_stats_game"];
+        for (const measurement of measurements) {
+          const measurementResult = await queryLiveInflux(
+            client,
+            `SELECT * FROM "${measurement}" WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' AND time >= ${globalSeasonStartMs}ms ORDER BY time ASC`
+          );
+          if (measurementResult.ok) {
+            careerRows = careerRows.concat(measurementResult.rows);
+          }
+        }
+      }
+    }
+
+    const rankRowsByPlayer = new Map();
+    filteredRankRows.forEach((row) => {
+      if (!rankRowsByPlayer.has(row.player)) {
+        rankRowsByPlayer.set(row.player, []);
+      }
+      rankRowsByPlayer.get(row.player).push(row);
+    });
+
+    const careerRowsByPlayer = new Map();
+    careerRows.forEach((row) => {
+      const playerId = row.player;
+      const threshold = seasonStartMsByPlayer.get(playerId);
+      const timestampMs = new Date(row.time).getTime();
+      if (!playerId || !Number.isFinite(threshold) || Number.isNaN(timestampMs) || timestampMs < threshold) return;
+      if (!careerRowsByPlayer.has(playerId)) {
+        careerRowsByPlayer.set(playerId, []);
+      }
+      careerRowsByPlayer.get(playerId).push(row);
+    });
+
+    const allSnapshots = [];
+    const players = [];
+    const failedPlayers = [];
+
+    playerConfigs.forEach((playerConfig) => {
+      const snapshotLookup = new Map();
+      const ensureSnapshotState = (timestamp) => {
+        if (!snapshotLookup.has(timestamp)) {
+          snapshotLookup.set(timestamp, {
+            captured_at: timestamp,
+            run_id: buildRunIdFromTimestamp(timestamp),
+            rank_roles: {},
+            hero_categories: {},
+            rank_season: latestSeasonByPlayer.get(playerConfig.player_id) ?? null,
+          });
+        }
+        return snapshotLookup.get(timestamp);
+      };
+
+      (rankRowsByPlayer.get(playerConfig.player_id) || []).forEach((row) => {
+        if (!row.time) return;
+        const state = ensureSnapshotState(row.time);
+        const role = normalizeRoleLock(row.role);
+        if (!role) return;
+        state.rank_roles[role] = {
+          role,
+          raw: {
+            division: row.division,
+            tier: row.tier,
+          },
+          label: null,
+          ordinal: convertRankOrdinalFromRaw({ division: row.division, tier: row.tier }),
+        };
+        state.rank_season = row.season;
+      });
+
+      (careerRowsByPlayer.get(playerConfig.player_id) || []).forEach((row) => {
+        if (!row.time) return;
+        const heroKey = normalizeInfluxHeroKey(row.hero);
+        if (!heroKey) return;
+        const state = ensureSnapshotState(row.time);
+        if (!state.hero_categories[heroKey]) {
+          state.hero_categories[heroKey] = {};
+        }
+        const categoryKey = String(row.measurement || "").replace(/^career_stats_/, "");
+        state.hero_categories[heroKey][categoryKey] = convertInfluxCategoryObject(row);
+      });
+
+      const snapshots = [...snapshotLookup.keys()]
+        .sort((left, right) => new Date(left) - new Date(right))
+        .map((timestamp) => {
+          const state = snapshotLookup.get(timestamp);
+          const rankSummary = normalizeLiveRankSummary({
+            platform: "pc",
+            season: state.rank_season,
+            roles: Object.values(state.rank_roles).sort((left, right) => String(left.role).localeCompare(String(right.role))),
+          });
+          const heroes = Object.keys(state.hero_categories)
+            .filter((heroKey) => heroKey !== "all-heroes")
+            .map((heroKey) => buildLiveHeroMetricRecord(heroKey, state.hero_categories[heroKey]))
+            .filter(Boolean)
+            .sort((left, right) => {
+              const timeDelta =
+                numericValue(right.season_time_played_seconds, numericValue(right.time_played_seconds)) -
+                numericValue(left.season_time_played_seconds, numericValue(left.time_played_seconds));
+              if (timeDelta !== 0) return timeDelta;
+              const gamesDelta =
+                numericValue(right.season_games_played, numericValue(right.games_played)) -
+                numericValue(left.season_games_played, numericValue(left.games_played));
+              if (gamesDelta !== 0) return gamesDelta;
+              return String(left.hero_name || "").localeCompare(String(right.hero_name || ""));
+            });
+          const allHeroRecord = state.hero_categories["all-heroes"]
+            ? buildLiveHeroMetricRecord("all-heroes", state.hero_categories["all-heroes"])
+            : null;
+          const metrics = allHeroRecord
+            ? {
+                kda: allHeroRecord.kda,
+                winrate: allHeroRecord.winrate,
+                games_played: allHeroRecord.games_played,
+                games_won: allHeroRecord.games_won,
+                games_lost: allHeroRecord.games_lost,
+                time_played_seconds: allHeroRecord.time_played_seconds,
+                total: allHeroRecord.total,
+                average: allHeroRecord.average,
+              }
+            : aggregateMetricsFromHeroes(heroes);
+          const roles = aggregateRoleMetricsFromHeroes(heroes);
+          const preferredRole = getPreferredRoleFromRoles(roles, rankSummary);
+          const profile = buildLivePlaceholderProfile(
+            playerConfig.display_name,
+            rankSummary,
+            timestamp,
+            playerSummaryByPlayer.get(playerConfig.player_id) || null
+          );
+          return {
+            snapshot_id: `${buildRunIdFromTimestamp(timestamp)}-${playerConfig.slug}`,
+            run_id: buildRunIdFromTimestamp(timestamp),
+            captured_at: new Date(timestamp).toISOString(),
+            player_id: playerConfig.player_id,
+            player_slug: playerConfig.slug,
+            display_name: playerConfig.display_name,
+            battle_tag: playerConfig.battle_tag,
+            notes: playerConfig.notes,
+            provider: "influxdb",
+            fetch_status: "success",
+            wide_match_context: "mixed",
+            warnings: [],
+            profile,
+            metrics,
+            roles,
+            ranks: rankSummary,
+            normalized: {
+              preferred_role: preferredRole,
+              data_quality: "success",
+              top_heroes: heroes.slice(0, 3).map((hero) => hero.hero_name),
+            },
+            heroes,
+            raw_payloads: null,
+            title: profile.title || rankSummary.best_label || "Unranked",
+          };
+        });
+
+      if (!snapshots.length) {
+        failedPlayers.push({
+          display_name: playerConfig.display_name,
+          player_id: playerConfig.player_id,
+        });
+      }
+
+      allSnapshots.push(...snapshots);
+      const playerRecord = buildLivePlayerRecord(playerConfig, snapshots, fallbackPayload);
+      if (playerRecord) {
+        players.push(playerRecord);
+      }
+    });
+
+    const runLookup = new Map();
+    [...allSnapshots]
+      .sort((left, right) => new Date(left.captured_at) - new Date(right.captured_at))
+      .forEach((snapshot) => {
+        if (!runLookup.has(snapshot.run_id)) {
+          runLookup.set(snapshot.run_id, {
+            run_id: snapshot.run_id,
+            timestamp: snapshot.captured_at,
+            started_at: snapshot.captured_at,
+            completed_at: snapshot.captured_at,
+            notes: "",
+            wide_match_context: "mixed",
+            snapshot_count: 0,
+            successful_players: 0,
+            failed_player_count: 0,
+            failed_player_names: [],
+            player_display_names: [],
+            player_slugs: [],
+          });
+        }
+        const run = runLookup.get(snapshot.run_id);
+        run.snapshot_count += 1;
+        run.successful_players += 1;
+        if (!run.player_display_names.includes(snapshot.display_name)) {
+          run.player_display_names.push(snapshot.display_name);
+        }
+        if (!run.player_slugs.includes(snapshot.player_slug)) {
+          run.player_slugs.push(snapshot.player_slug);
+        }
+      });
+
+    [...runLookup.values()].forEach((run) => {
+      const runSnapshots = allSnapshots.filter((snapshot) => snapshot.run_id === run.run_id);
+      const wideContext = buildWideMatchContextFromSnapshots(runSnapshots);
+      run.wide_match_context = wideContext;
+      runSnapshots.forEach((snapshot) => {
+        snapshot.wide_match_context = wideContext;
+      });
+    });
+
+    const runRecords = [...runLookup.values()].sort((left, right) => new Date(left.timestamp) - new Date(right.timestamp));
+    const latestRun = runRecords[runRecords.length - 1] || null;
+    const freshSnapshots = latestRun ? allSnapshots.filter((snapshot) => snapshot.run_id === latestRun.run_id).length : 0;
+    const nowIso = new Date().toISOString();
+
+    return {
+      meta: {
+        team_name: fallbackPayload?.meta?.team_name || "Overwatch Team",
+        site_subtitle: fallbackPayload?.meta?.site_subtitle || "Live database-backed reporting.",
+        provider_name: "influxdb",
+        generated_at: nowIso,
+        config_path: fallbackPayload?.meta?.config_path || "",
+        project_root: fallbackPayload?.meta?.project_root || "",
+        latest_run: latestRun
+          ? {
+              run_id: latestRun.run_id,
+              timestamp: latestRun.timestamp,
+              notes: "",
+              wide_match_context: latestRun.wide_match_context || "mixed",
+            }
+          : fallbackPayload?.meta?.latest_run || { run_id: "", timestamp: "", notes: "", wide_match_context: "mixed" },
+        total_tracked_players: playerConfigs.length,
+        fresh_snapshots: freshSnapshots,
+        player_count_with_history: players.length,
+        stat_scope: "competitive-only",
+        source_mode: "live",
+        live_mode: true,
+        live_refresh_message: `Live data refreshed ${new Date(nowIso).toLocaleString()}.`,
+        live_source: liveConfig,
+        failed_players: failedPlayers,
+      },
+      overview: fallbackPayload?.overview || {},
+      players: players.sort((left, right) => String(left.display_name || "").localeCompare(String(right.display_name || ""))),
+      settings: {
+        removal_mode: "hide-only",
+        runs: runRecords,
+      },
+    };
+  };
+  const buildPagePayloadFromSiteModel = (siteModel, originalPageData) => {
+    if (originalPageData.page === "player") {
+      const requestedSlug = originalPageData?.context?.player_slug || originalPageData?.payload?.player?.slug || "";
+      const player =
+        (siteModel.players || []).find((entry) => entry.slug === requestedSlug) ||
+        siteModel.players?.[0] ||
+        originalPageData?.payload?.player;
+      return {
+        meta: siteModel.meta,
+        player,
+      };
+    }
+    return siteModel;
+  };
+  const withLiveStatusMessage = (payload, message, liveMode = false) => {
+    const clone = deepCloneJson(payload);
+    if (clone?.meta) {
+      clone.meta.source_mode = liveMode ? "live" : clone.meta.source_mode || "embedded-fallback";
+      clone.meta.live_mode = liveMode;
+      clone.meta.live_refresh_message = message;
+    }
+    return clone;
+  };
+  const withSnapshotStatusMessage = (payload, message, sourceMode) => {
+    const clone = deepCloneJson(payload);
+    if (clone?.meta) {
+      clone.meta.source_mode = sourceMode;
+      clone.meta.live_mode = sourceMode === "live";
+      clone.meta.live_refresh_message = message;
+    }
+    return clone;
+  };
+  const renderCurrentPage = (payload) => {
+    if (pageData.page === "overview") {
+      renderOverview(payload);
+    } else if (pageData.page === "player") {
+      renderPlayer(payload);
+    } else if (pageData.page === "settings") {
+      renderSettings(payload);
+    }
+  };
+  const getPublishedSnapshotUrl = () => (pageData.page === "player" ? "../data/site-model.json" : "data/site-model.json");
+  const resolvePublishedSnapshotPayload = async () => {
+    if (!["http:", "https:"].includes(window.location.protocol)) {
+      return null;
+    }
+
+    let response;
+    try {
+      response = await fetch(getPublishedSnapshotUrl(), { method: "GET", cache: "no-store" });
+    } catch (error) {
+      return null;
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    let siteModel;
+    try {
+      siteModel = await response.json();
+    } catch (error) {
+      throw new Error("Published snapshot file is not valid JSON.");
+    }
+
+    const pagePayload = buildPagePayloadFromSiteModel(siteModel, pageData);
+    return withSnapshotStatusMessage(
+      pagePayload,
+      `Published snapshot loaded ${new Date().toLocaleString()}. Uploading a new site-model.json file will refresh this site without changing the page code.`,
+      "published-snapshot"
+    );
+  };
+  const resolveLivePagePayload = async () => {
+    const liveConfig = pageData.live;
+    if (!liveConfig?.enabled || liveConfig.provider !== "influxdb" || !liveConfig.browser_refresh_enabled) {
+      return null;
+    }
+
+    if (window.location.protocol === "https:" && String(liveConfig.query_url || "").startsWith("http://")) {
+      throw new Error("Live browser fetch needs the database endpoint to be served over HTTPS when this page is hosted over HTTPS.");
+    }
+
+    const cachedSiteModel = readLiveCache(liveConfig);
+    if (cachedSiteModel) {
+      return buildPagePayloadFromSiteModel(cachedSiteModel, pageData);
+    }
+
+    const siteModel = await buildLiveSiteModel(liveConfig, pageData.payload);
+    writeLiveCache(liveConfig, siteModel);
+    return buildPagePayloadFromSiteModel(siteModel, pageData);
+  };
+  const boot = async () => {
+    renderCurrentPage(pageData.payload);
+
+    try {
+      const publishedPayload = await resolvePublishedSnapshotPayload();
+      if (publishedPayload) {
+        renderCurrentPage(publishedPayload);
+        return;
+      }
+
+      if (!pageData.live?.enabled || !pageData.live?.browser_refresh_enabled) {
+        return;
+      }
+
+      const livePayload = await resolveLivePagePayload();
+      if (livePayload) {
+        renderCurrentPage(livePayload);
+      }
+    } catch (error) {
+      console.warn("Snapshot refresh failed, keeping embedded fallback payload.", error);
+      renderCurrentPage(withSnapshotStatusMessage(pageData.payload, `Snapshot refresh failed: ${error?.message || "Unknown error"}`, "embedded-fallback"));
+    }
+  };
+
+  void boot();
 })();

@@ -8,6 +8,7 @@ function Get-OwReportOverviewHtml {
     $json = ConvertTo-OwReportHtmlSafeJson -Value ([ordered]@{
         page = 'overview'
         payload = $SiteModel
+        live = (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source'))
     })
     $title = '{0} | Overwatch Team Report' -f $SiteModel.meta.team_name
 
@@ -121,6 +122,10 @@ function Get-OwReportPlayerHtml {
         payload = [ordered]@{
             meta = $SiteModel.meta
             player = $Player
+        }
+        live = (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source'))
+        context = [ordered]@{
+            player_slug = $Player.slug
         }
     })
     $title = '{0} | {1}' -f $Player.display_name, $SiteModel.meta.team_name
@@ -254,6 +259,7 @@ function Get-OwReportSettingsHtml {
     $json = ConvertTo-OwReportHtmlSafeJson -Value ([ordered]@{
         page = 'settings'
         payload = $SiteModel
+        live = (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source'))
     })
     $title = '{0} | Settings' -f $SiteModel.meta.team_name
     $isHideOnly = (Get-OwReportObjectValue -Object $SiteModel -Path @('settings', 'removal_mode') -Default 'browser-local') -eq 'hide-only'
@@ -324,37 +330,66 @@ function Publish-OwReportSite {
 
     $runOutputDir = Ensure-OwReportDirectory -Path (Join-Path $Config.output_dir ('runs\{0}' -f $RunContext.run_id))
     $latestOutputDir = Join-Path $Config.output_dir 'latest'
+    $docsOutputDir = Join-Path $script:OwReportProjectRoot 'docs'
     if (Test-Path -LiteralPath $latestOutputDir) {
         Remove-Item -LiteralPath $latestOutputDir -Recurse -Force
     }
     Ensure-OwReportDirectory -Path $latestOutputDir | Out-Null
 
+    $resolvedProjectRoot = [System.IO.Path]::GetFullPath($script:OwReportProjectRoot).TrimEnd('\')
+    $resolvedDocsOutputDir = [System.IO.Path]::GetFullPath($docsOutputDir)
+    if (-not $resolvedDocsOutputDir.StartsWith($resolvedProjectRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to publish docs outside the project root: $resolvedDocsOutputDir"
+    }
+    if (Test-Path -LiteralPath $docsOutputDir) {
+        foreach ($item in @(Get-ChildItem -LiteralPath $docsOutputDir -Force -ErrorAction SilentlyContinue)) {
+            Remove-Item -LiteralPath $item.FullName -Recurse -Force
+        }
+    }
+    Ensure-OwReportDirectory -Path $docsOutputDir | Out-Null
+
     $playersDir = Ensure-OwReportDirectory -Path (Join-Path $runOutputDir 'players')
     $latestPlayersDir = Ensure-OwReportDirectory -Path (Join-Path $latestOutputDir 'players')
+    $docsPlayersDir = Ensure-OwReportDirectory -Path (Join-Path $docsOutputDir 'players')
     $runAssetsDir = Ensure-OwReportDirectory -Path (Join-Path $runOutputDir 'assets')
     $latestAssetsDir = Ensure-OwReportDirectory -Path (Join-Path $latestOutputDir 'assets')
+    $docsAssetsDir = Ensure-OwReportDirectory -Path (Join-Path $docsOutputDir 'assets')
+    $runDataDir = Ensure-OwReportDirectory -Path (Join-Path $runOutputDir 'data')
+    $latestDataDir = Ensure-OwReportDirectory -Path (Join-Path $latestOutputDir 'data')
+    $docsDataDir = Ensure-OwReportDirectory -Path (Join-Path $docsOutputDir 'data')
 
     Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\styles.css') -Destination (Join-Path $runAssetsDir 'styles.css') -Force
     Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\app.js') -Destination (Join-Path $runAssetsDir 'app.js') -Force
     Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\styles.css') -Destination (Join-Path $latestAssetsDir 'styles.css') -Force
     Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\app.js') -Destination (Join-Path $latestAssetsDir 'app.js') -Force
+    Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\styles.css') -Destination (Join-Path $docsAssetsDir 'styles.css') -Force
+    Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\app.js') -Destination (Join-Path $docsAssetsDir 'app.js') -Force
 
     $overviewHtml = Get-OwReportOverviewHtml -SiteModel $SiteModel
     $settingsHtml = Get-OwReportSettingsHtml -SiteModel $SiteModel
     Write-OwReportTextFile -Path (Join-Path $runOutputDir 'index.html') -Content $overviewHtml
     Write-OwReportTextFile -Path (Join-Path $latestOutputDir 'index.html') -Content $overviewHtml
+    Write-OwReportTextFile -Path (Join-Path $docsOutputDir 'index.html') -Content $overviewHtml
     Write-OwReportTextFile -Path (Join-Path $runOutputDir 'settings.html') -Content $settingsHtml
     Write-OwReportTextFile -Path (Join-Path $latestOutputDir 'settings.html') -Content $settingsHtml
+    Write-OwReportTextFile -Path (Join-Path $docsOutputDir 'settings.html') -Content $settingsHtml
+    Write-OwReportTextFile -Path (Join-Path $docsOutputDir '.nojekyll') -Content ''
+    Write-OwReportJsonFile -Path (Join-Path $runDataDir 'site-model.json') -Value $SiteModel -Compress
+    Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'site-model.json') -Value $SiteModel -Compress
+    Write-OwReportJsonFile -Path (Join-Path $docsDataDir 'site-model.json') -Value $SiteModel -Compress
 
     foreach ($player in $SiteModel.players) {
         $playerHtml = Get-OwReportPlayerHtml -SiteModel $SiteModel -Player $player
         Write-OwReportTextFile -Path (Join-Path $playersDir ('{0}.html' -f $player.slug)) -Content $playerHtml
         Write-OwReportTextFile -Path (Join-Path $latestPlayersDir ('{0}.html' -f $player.slug)) -Content $playerHtml
+        Write-OwReportTextFile -Path (Join-Path $docsPlayersDir ('{0}.html' -f $player.slug)) -Content $playerHtml
     }
 
     return [ordered]@{
         run_output_dir = $runOutputDir
         latest_output_dir = $latestOutputDir
         latest_index = (Join-Path $latestOutputDir 'index.html')
+        docs_output_dir = $docsOutputDir
+        docs_index = (Join-Path $docsOutputDir 'index.html')
     }
 }

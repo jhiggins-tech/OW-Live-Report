@@ -241,7 +241,8 @@ function New-OwReportInfluxPlaceholderProfile {
         [Parameter(Mandatory = $true)]
         $RankSummary,
         [Parameter(Mandatory = $true)]
-        [string]$Timestamp
+        [string]$Timestamp,
+        $SummaryRow = $null
     )
 
     $bestLabel = Get-OwReportObjectValue -Object $RankSummary -Path @('best_label') -Default 'Unranked'
@@ -253,13 +254,45 @@ function New-OwReportInfluxPlaceholderProfile {
         default { '' }
     }
 
+    $fallbackTitle = $(if (-not [string]::IsNullOrWhiteSpace($roleLabel) -and $bestLabel -ne 'Unranked') { '{0} {1}' -f $bestLabel, $roleLabel } else { $bestLabel })
+    $summaryTimestamp = Get-OwReportObjectValue -Object $SummaryRow -Path @('time')
+    $lastUpdatedAt = $(if (-not [string]::IsNullOrWhiteSpace($summaryTimestamp)) { [int64][DateTimeOffset]::Parse($summaryTimestamp).ToUnixTimeSeconds() } else { [int64][DateTimeOffset]::Parse($Timestamp).ToUnixTimeSeconds() })
+
     return [ordered]@{
-        username = $DisplayName
-        avatar = $null
-        namecard = $null
-        title = $(if (-not [string]::IsNullOrWhiteSpace($roleLabel) -and $bestLabel -ne 'Unranked') { '{0} {1}' -f $bestLabel, $roleLabel } else { $bestLabel })
-        endorsement_level = 0
-        last_updated_at = [int64][DateTimeOffset]::Parse($Timestamp).ToUnixTimeSeconds()
+        username = Get-OwReportObjectValue -Object $SummaryRow -Path @('username') -Default $DisplayName
+        avatar = Get-OwReportObjectValue -Object $SummaryRow -Path @('avatar')
+        namecard = Get-OwReportObjectValue -Object $SummaryRow -Path @('namecard')
+        title = Get-OwReportObjectValue -Object $SummaryRow -Path @('title') -Default $fallbackTitle
+        endorsement_level = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $SummaryRow -Path @('endorsement_level') -Default 0) -Default 0
+        endorsement_frame = Get-OwReportObjectValue -Object $SummaryRow -Path @('endorsement_frame')
+        last_updated_at = $lastUpdatedAt
+    }
+}
+
+function Get-OwReportInfluxLatestPlayerSummary {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Client,
+        [Parameter(Mandatory = $true)]
+        [string]$PlayerId
+    )
+
+    $query = 'SELECT * FROM "player_summary" WHERE "player"=''{0}'' ORDER BY time DESC LIMIT 1' -f $PlayerId.Replace("'", "''")
+    $result = Invoke-OwReportInfluxQuery -Client $Client -Query $query
+    if (-not $result.ok) {
+        return [ordered]@{
+            ok = $false
+            row = $null
+            error = $result.error
+        }
+    }
+
+    $row = @($result.rows | Select-Object -First 1)
+    return [ordered]@{
+        ok = $true
+        row = $(if ($row.Count -gt 0) { $row[0] } else { $null })
+        error = $null
     }
 }
 
@@ -385,6 +418,15 @@ function Get-OwReportInfluxPlayerSnapshots {
     $failedMeasurements = @()
     foreach ($measurement in $measurements) {
         $rowsByMeasurement[$measurement] = @()
+    }
+
+    $playerSummaryResult = Get-OwReportInfluxLatestPlayerSummary -Client $Client -PlayerId $PlayerConfig.player_id
+    $playerSummaryRow = $null
+    if ($playerSummaryResult.ok) {
+        $playerSummaryRow = $playerSummaryResult.row
+    }
+    elseif ($null -ne $playerSummaryResult.error) {
+        $warnings += ("player_summary query failed: {0}" -f (Format-OwReportProviderErrorMessage -ErrorDetail $playerSummaryResult.error))
     }
 
     $latestSeasonResult = Get-OwReportInfluxLatestSeason -Client $Client -PlayerId $PlayerConfig.player_id
@@ -562,7 +604,7 @@ function Get-OwReportInfluxPlayerSnapshots {
 
         $roles = Get-OwReportAggregateRoleMetricsFromHeroes -HeroRecords $heroes
         $preferredRole = Get-OwReportPreferredRole -Roles $roles -RankSummary $rankSummary
-        $profile = New-OwReportInfluxPlaceholderProfile -DisplayName $PlayerConfig.display_name -RankSummary $rankSummary -Timestamp $timestamp
+        $profile = New-OwReportInfluxPlaceholderProfile -DisplayName $PlayerConfig.display_name -RankSummary $rankSummary -Timestamp $timestamp -SummaryRow $playerSummaryRow
         $snapshotWarnings = @($warnings)
         $fetchStatus = $(if ($failedMeasurements.Count -gt 0) { 'partial' } else { 'success' })
         $title = Get-OwReportObjectValue -Object $profile -Path @('title') -Default 'Unranked'

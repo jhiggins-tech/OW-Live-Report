@@ -1,31 +1,64 @@
 # Overwatch Weasel Report
 
-This tool is meant to be run over and over again.
+This project builds a polished static Overwatch team report from competitive snapshot data.
 
-Each time you run it, it:
+Right now the workflow is:
 
-1. reads your player list
-2. queries the hosted stats database
-3. rebuilds the report using the full database-backed history
-4. writes a fresh local HTML output
+1. query the hosted stats database
+2. build a static site snapshot locally
+3. write the publishable site into `docs/`
+4. push the updated `docs/` folder to GitHub
 
-That means `output/latest/index.html` is always your newest report, while the historical stat source lives in the hosted database instead of your local `data` folder.
+The important change is this:
 
-All report stats are now intended to be **competitive-only**.
+- GitHub Pages is now meant to serve a static snapshot
+- the page does **not** rely on live browser access to the database
+- the published site reads from a fixed snapshot file at `docs/data/site-model.json`
 
-## The Easiest Way To Use It
+That means you can refresh the published site by uploading a new snapshot file set, without changing the website code.
 
-You only really need to edit **one simple text file** for your roster:
+## Canonical Preview
 
-[tracked-battletags.txt](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\config\tracked-battletags.txt)
+Use this as the main local preview:
 
-Open it and put one player per line.
+- `docs/index.html`
+
+That is the version we treat as the publishable copy.
+
+`output/latest/` still exists as a generated build artifact, but `docs/` is the place to open, inspect, and publish.
+
+## What The Site Uses
+
+The report currently uses:
+
+- competitive-only rank history
+- competitive-only hero usage and performance
+- profile metadata from `player_summary`
+- a static snapshot file for GitHub Pages publishing
+
+The site currently shows a source badge so you can tell whether you are looking at:
+
+- `Published Snapshot`
+- `Fallback Snapshot`
+- `Live Server`
+
+For GitHub Pages, the normal expected state is `Published Snapshot`.
+
+## Simple Roster File
+
+You can still manage the roster in:
+
+- `config/tracked-battletags.txt`
+
+One player per line.
 
 Accepted formats:
 
-- `BattleTag`
-- `Display Name | BattleTag`
-- `Display Name | BattleTag | Optional notes`
+```text
+BattleTag
+Display Name | BattleTag
+Display Name | BattleTag | Optional notes
+```
 
 Example:
 
@@ -35,214 +68,214 @@ Damage Flex | ExampleDps#5678
 Support | ExampleSupport#9999 | Usually queues with the main stack
 ```
 
-## First-Time Setup
+## Main Config
 
-Open PowerShell in this project folder, then run these commands one by one.
+Main config file:
 
-### 1. Open the roster file
+- `config/team.sample.json`
+
+Things you may want to edit:
+
+- `team_name`
+- database connection settings if the host changes
+- player overrides such as default locked roles
+
+## Quick Start
+
+### 1. Edit the roster
 
 ```powershell
 notepad .\config\tracked-battletags.txt
 ```
 
-Replace the sample line with your real team.
-
-### 2. Optional: change the team name shown on the site
+### 2. Optional: edit the team name
 
 ```powershell
 notepad .\config\team.sample.json
 ```
 
-Inside that file, change:
-
-```json
-"team_name": "Example Overwatch Squad"
-```
-
-You normally do **not** need to edit the rest of that JSON file unless the database URL changes.
-
-### 2b. Optional: hide heroes for one player
-
-In `team.sample.json`, there is now a `player_overrides` section.
-
-Example:
-
-```json
-"player_overrides": [
-  {
-    "player": "ExampleDamage#1234",
-    "hidden_heroes": ["Widowmaker"],
-    "locked_role": "damage"
-  }
-]
-```
-
-What this does:
-
-- `player`: who the override applies to
-- `hidden_heroes`: heroes to completely remove from that player's visible stats and charts
-- `locked_role`: optional default role lock for the team optimizer
-
-You can identify the player by BattleTag, normalized player id, display name, or slug.
-
-### 3. Run the report
+### 3. Rebuild the snapshot site
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
 ```
 
-### 4. Open the generated report
+### 4. Open the publishable preview
 
 ```powershell
-start .\output\latest\index.html
+start .\docs\index.html
 ```
 
-## The Main Command
+## What `run-report.ps1` Does Now
 
-This is the normal command you can keep reusing:
+When you run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
 ```
 
-## If You Want To Add Notes For A Regeneration
+it now:
 
-Example:
+1. reads your roster/config
+2. queries the hosted database
+3. builds the report site
+4. writes:
+   - `output/runs/<run-id>/`
+   - `output/latest/`
+   - `docs/`
+5. writes the publishable snapshot file:
+   - `docs/data/site-model.json`
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mostly_wide -Notes "Ranked session after scrims"
-```
+So after a successful run, `docs/` is already ready to commit and publish.
 
-With the database-backed provider, `WideMatchContext` is no longer the main source of truth for team-wide interpretation. The report now derives wide-vs-narrow context on the fly from the available rank data in each snapshot.
+## GitHub Pages Snapshot Flow
 
-## What `WideMatchContext` Means
+This is the recommended publishing workflow.
 
-Use one of these:
+### Normal refresh
 
-- `mostly_narrow`
-- `mixed`
-- `mostly_wide`
+1. Run the report locally.
+2. Check `docs/index.html`.
+3. Commit the updated `docs/` folder.
+4. Push to GitHub.
 
-If you are not sure, use:
+That updates the published site.
 
-```powershell
--WideMatchContext mixed
-```
+### Important snapshot file
 
-If you mostly played in wide queue, use:
+The key data file is:
 
-```powershell
--WideMatchContext mostly_wide
-```
+- `docs/data/site-model.json`
 
-That still works as a manual run note when needed, but the main report logic now prefers the inferred wide/narrow context derived from the captured ranks.
+When the site is served over HTTP(S), the page loads this file and rebuilds the dashboard from it.
+
+That means:
+
+- the published page can accept refreshed data without changing the front-end code
+- the page shell can stay the same while the snapshot data changes
+
+### If only data changed
+
+If the site structure is unchanged and you are only refreshing stats, the most important file is:
+
+- `docs/data/site-model.json`
+
+In practice, it is usually easiest to commit the whole refreshed `docs/` folder anyway.
+
+### If roster or page structure changed
+
+If you added players, changed slugs, or changed the UI, upload the full refreshed `docs/` folder, not just the JSON snapshot file.
+
+## Important Browser Note
+
+There are two different behaviors depending on where the site is opened.
+
+### Local file preview
+
+If you open `docs/index.html` directly from disk with `file:///...`, browsers often block JSON fetches from sibling files.
+
+So in local file preview:
+
+- the page can fall back to the embedded snapshot baked into the HTML
+
+### GitHub Pages / served site
+
+If the site is served over HTTP(S), it can load:
+
+- `docs/data/site-model.json`
+
+That is the main publish path.
+
+## Why We Are Not Using Live Browser Refresh Right Now
+
+The hosted database is currently only available over `http`, not `https`.
+
+GitHub Pages is served over `https`, so direct browser calls to the database would be blocked as mixed content.
+
+Because of that, the current stable approach is:
+
+- database query at build time
+- static snapshot at publish time
+- published site reads same-origin snapshot JSON
+
+This is the cleanest safe path until HTTPS is available on the database host.
+
+## Long-Term Tracking
+
+Long-term history currently lives in the hosted database.
+
+Your local run does not need to maintain the full stat history itself. Instead it:
+
+- reads the current historical data from the database
+- builds a new snapshot site from that history
+- publishes the latest static view into `docs/`
+
+So the published report is a snapshot of the database history at the time you ran the command.
+
+## Settings Page
+
+The settings page is here:
+
+- `docs/settings.html`
+
+It lets you:
+
+- hide snapshots from the browser view
+- restore hidden snapshots
+
+In database-backed mode, this is currently hide-only in the UI. It does not delete rows from the hosted database.
+
+## Hero Filters And Roster Filters
+
+The report currently supports:
+
+- player visibility filters on the overview
+- per-player hero filters on player pages
+- role quick-filter buttons in hero filters
+- browser-saved optimizer role locks
+
+These are view-layer controls. They change what the report shows, but they do not edit the hosted source database.
 
 ## Team Optimizer
 
-At the bottom of the main page there is now a `Best Team Combination` section.
+The `Best Team Combination` section:
 
-It:
-
-- uses the latest competitive-only role data
-- builds the best 1 tank / 2 DPS / 2 support lineup
-- flags whether the assigned role-rank spread looks `Wide`
-
-You can also use the role-lock dropdowns on that page to force someone onto `Tank`, `DPS`, or `Support`.
-
-Important:
-
-- those dropdown locks are browser-side controls
-- they rerun the lineup instantly on the page
-- they do **not** change your saved snapshots
-- they stay remembered in that browser until you hit `Reset Locks`
-
-If you want a lock to be the default every time the report opens, put it in `player_overrides` inside `team.sample.json`.
-
-## How Long-Term Tracking Works
-
-Yes, this tool is designed to update the same report over time with additional data.
-
-Plain-English version:
-
-- The hosted database keeps collecting timestamped snapshots.
-- Your local command reads the available history from that database.
-- The site is rebuilt using the full database history each time.
-- `output/latest/` becomes your newest report.
-- `output/runs/<run-id>/` keeps older generated versions.
-- The database is the real long-term tracking history.
-
-So the normal pattern is:
-
-1. edit your roster if needed
-2. run the same command again later
-3. open `output/latest/index.html`
-4. see more points on the charts as history grows
-
-## Important Folders
-
-- [config/tracked-battletags.txt](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\config\tracked-battletags.txt): the simple roster file you edit
-- [config/team.sample.json](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\config\team.sample.json): basic app settings
-- [run-report.ps1](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\run-report.ps1): the script you run
-- [publish-github-pages.ps1](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\publish-github-pages.ps1): copies the latest generated site into `docs/` for GitHub Pages
-- [output/latest/index.html](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\output\latest\index.html): the newest report
-- [docs/index.html](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\docs\index.html): the GitHub Pages publish folder
-- [data](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\data): legacy local storage from the older OverFast mode
-- [logs](C:\Users\mattj\OneDrive\Documents\Codex\OVERWATCH_WEASEL_REPORT\logs): run logs
-
-## If You Want To Reset History
-
-In the current database-backed mode, deleting local folders does **not** erase the historical stat source. Use the report `Settings` page to hide snapshots from your browser view, or ask the database owner to remove bad source data if a database snapshot truly needs to disappear.
+- uses competitive-only role data
+- builds a `1 tank / 2 DPS / 2 support` lineup
+- prefers `Narrow` lineups when possible
+- supports browser-side manual role locks
+- supports `Not Playing`
 
 ## Testing
 
-If you ever want to check the analytics logic:
+Run the test suite with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 ```
 
-## Provider Notes
+## Helpful Files
 
-The sample config now points at the hosted InfluxDB-compatible query endpoint your friend provided. The report no longer depends on OverFast for its main data flow unless you explicitly switch the provider back in `team.sample.json`.
+- `config/tracked-battletags.txt`: simple roster list
+- `config/team.sample.json`: project config
+- `run-report.ps1`: main rebuild command
+- `publish-github-pages.ps1`: optional manual sync from `output/latest` to `docs`
+- `docs/index.html`: canonical preview and publish entrypoint
+- `docs/data/site-model.json`: published snapshot data file
+- `docs/settings.html`: snapshot visibility settings page
+- `output/runs/`: archived generated builds
+- `output/latest/`: latest generated build copy
+- `logs/`: run logs
 
-## GitHub Pages
+## Recommended Everyday Workflow
 
-This project is now set up so you can publish the static site from the repo `docs/` folder on GitHub Pages.
+Use this pattern:
 
-### Prepare the site files
+1. edit roster if needed
+2. run the report
+3. open `docs/index.html`
+4. sanity-check the site
+5. commit the updated `docs/` folder
+6. push to GitHub
 
-After you generate or refresh the local report, run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\publish-github-pages.ps1
-```
-
-That copies the current site from `output/latest/` into `docs/` and writes a `.nojekyll` file so GitHub Pages serves it cleanly.
-
-### Push to GitHub
-
-1. Create a new GitHub repo.
-2. Push this whole project to that repo.
-3. In GitHub, open `Settings -> Pages`.
-4. Under `Build and deployment`, choose:
-   `Deploy from a branch`
-5. Select:
-   Branch: `main`
-   Folder: `/docs`
-6. Save and wait for GitHub Pages to publish.
-
-### When you want to refresh the published site
-
-1. Rebuild the report locally if needed.
-2. Run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\publish-github-pages.ps1
-```
-
-3. Commit the updated `docs/` folder.
-4. Push to GitHub.
-
-### Important limitation right now
-
-GitHub Pages only hosts the static front end. Until your friend's database endpoint is stable and browser-safe, publishing to GitHub Pages does **not** make the site magically live-refresh on its own. The static site is ready for hosting, but true live browser updates will still depend on the backend being reachable and suitable for browser requests.
+That keeps the published page updated with the newest snapshot without needing any live browser database connection.

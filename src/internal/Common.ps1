@@ -398,10 +398,16 @@ function Write-OwReportJsonFile {
         [string]$Path,
         [Parameter(Mandatory = $true)]
         $Value,
-        [int]$Depth = 100
+        [int]$Depth = 100,
+        [switch]$Compress
     )
 
-    $json = $Value | ConvertTo-Json -Depth $Depth
+    $json = if ($Compress) {
+        $Value | ConvertTo-Json -Depth $Depth -Compress
+    }
+    else {
+        $Value | ConvertTo-Json -Depth $Depth
+    }
     Write-OwReportTextFile -Path $Path -Content $json
 }
 

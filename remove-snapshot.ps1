@@ -62,7 +62,7 @@ $result = & $owReportModule {
 
         $siteModel = Get-OwReportTeamAnalytics -Config $config -Storage $storage -RunContext $runContext -HeroCatalog @{}
         $published = Publish-OwReportSite -Config $config -SiteModel $siteModel -RunContext $runContext
-        $rebuiltLatestIndex = $published.latest_index
+        $rebuiltLatestIndex = Get-OwReportObjectValue -Object $published -Path @('docs_index') -Default $published.latest_index
     }
     elseif (Test-Path -LiteralPath $latestOutputDir) {
         Remove-Item -LiteralPath $latestOutputDir -Recurse -Force
