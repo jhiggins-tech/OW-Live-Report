@@ -27,8 +27,8 @@ function ConvertFrom-OwReportInfluxResponse {
     )
 
     $rows = @()
-    foreach ($result in @($Payload.results)) {
-        foreach ($series in @($result.series)) {
+    foreach ($result in @(Get-OwReportObjectValue -Object $Payload -Path @('results') -Default @())) {
+        foreach ($series in @(Get-OwReportObjectValue -Object $result -Path @('series') -Default @())) {
             $columns = @($series.columns)
             $tagObject = Get-OwReportObjectValue -Object $series -Path @('tags') -Default ([ordered]@{})
             foreach ($valueRow in @($series.values)) {
@@ -51,6 +51,39 @@ function ConvertFrom-OwReportInfluxResponse {
     }
 
     return $rows
+}
+
+function Get-OwReportInfluxPlayerRegexPattern {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Players
+    )
+
+    $playerParts = @(
+        foreach ($player in @($Players)) {
+            $playerId = Get-OwReportObjectValue -Object $player -Path @('player_id')
+            if (-not [string]::IsNullOrWhiteSpace($playerId)) {
+                [regex]::Escape($playerId)
+            }
+        }
+    )
+
+    if ($playerParts.Count -eq 0) {
+        return $null
+    }
+
+    return '^({0})$' -f ($playerParts -join '|')
+}
+
+function Get-OwReportInfluxLastFieldSelectClause {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Fields
+    )
+
+    return (($Fields | ForEach-Object { 'last("{0}") AS "{0}"' -f $_ }) -join ', ')
 }
 
 function Invoke-OwReportInfluxQuery {
@@ -400,6 +433,187 @@ function Get-OwReportInfluxLatestSeason {
     }
 }
 
+function ConvertTo-OwReportInfluxPlayerSnapshotSet {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$PlayerConfig,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$HeroCatalog,
+        $PlayerSummaryRow = $null,
+        [object[]]$RankRows = @(),
+        [hashtable]$RowsByMeasurement = @{},
+        [object[]]$Warnings = @(),
+        [object[]]$FailedMeasurements = @()
+    )
+
+    $careerMeasurements = @('career_stats_assists', 'career_stats_average', 'career_stats_combat', 'career_stats_game')
+    $rowsLookup = @{}
+    foreach ($measurement in $careerMeasurements) {
+        $rowsLookup[$measurement] = @((Get-OwReportObjectValue -Object $RowsByMeasurement -Path @($measurement) -Default @()))
+    }
+
+    $snapshotLookup = @{}
+    $ensureSnapshotState = {
+        param([string]$Timestamp)
+
+        if (-not $snapshotLookup.ContainsKey($Timestamp)) {
+            $snapshotLookup[$Timestamp] = [ordered]@{
+                captured_at = $Timestamp
+                run_id = ConvertTo-OwReportInfluxRunId -Timestamp $Timestamp
+                rank_roles = @{}
+                hero_categories = @{}
+                rank_season = $null
+            }
+        }
+
+        return $snapshotLookup[$Timestamp]
+    }
+
+    foreach ($rankRow in @($RankRows)) {
+        $timestamp = Get-OwReportObjectValue -Object $rankRow -Path @('time')
+        if ([string]::IsNullOrWhiteSpace($timestamp)) {
+            continue
+        }
+
+        $state = & $ensureSnapshotState $timestamp
+        $role = ConvertTo-OwReportRoleKey -Role (Get-OwReportObjectValue -Object $rankRow -Path @('role'))
+        if ([string]::IsNullOrWhiteSpace($role)) {
+            continue
+        }
+
+        $state.rank_roles[$role] = [ordered]@{
+            role = $role
+            raw = [ordered]@{
+                division = Get-OwReportObjectValue -Object $rankRow -Path @('division')
+                tier = Get-OwReportObjectValue -Object $rankRow -Path @('tier')
+            }
+            label = $null
+            ordinal = ConvertTo-RankOrdinal -Rank ([ordered]@{
+                division = Get-OwReportObjectValue -Object $rankRow -Path @('division')
+                tier = Get-OwReportObjectValue -Object $rankRow -Path @('tier')
+            })
+        }
+        $state.rank_season = Get-OwReportObjectValue -Object $rankRow -Path @('season')
+    }
+
+    foreach ($measurement in $careerMeasurements) {
+        $categoryKey = $measurement -replace '^career_stats_', ''
+        foreach ($row in @($rowsLookup[$measurement])) {
+            $timestamp = Get-OwReportObjectValue -Object $row -Path @('time')
+            if ([string]::IsNullOrWhiteSpace($timestamp)) {
+                continue
+            }
+
+            $heroKey = ConvertTo-OwReportHeroKey -Hero (Get-OwReportObjectValue -Object $row -Path @('hero') -Default '')
+            if ([string]::IsNullOrWhiteSpace($heroKey)) {
+                continue
+            }
+
+            $state = & $ensureSnapshotState $timestamp
+            if (-not $state.hero_categories.ContainsKey($heroKey)) {
+                $state.hero_categories[$heroKey] = @{}
+            }
+
+            $state.hero_categories[$heroKey][$categoryKey] = ConvertTo-OwReportInfluxCategoryObject -Row $row
+        }
+    }
+
+    $snapshots = @()
+    foreach ($timestamp in @($snapshotLookup.Keys | Sort-Object)) {
+        $state = $snapshotLookup[$timestamp]
+        $rankSummary = Normalize-OwReportRankSummary -RankSummary ([ordered]@{
+            platform = 'pc'
+            season = $state.rank_season
+            roles = @($state.rank_roles.Values | Sort-Object role)
+        })
+
+        $heroes = @()
+        foreach ($heroKey in @($state.hero_categories.Keys | Sort-Object)) {
+            if ($heroKey -eq 'all-heroes') {
+                continue
+            }
+
+            $heroRecord = Get-OwReportInfluxHeroMetricRecord -HeroKey $heroKey -HeroCategoryMap $state.hero_categories[$heroKey] -HeroCatalog $HeroCatalog
+            if ($null -ne $heroRecord) {
+                $heroes += $heroRecord
+            }
+        }
+
+        $heroes = @(
+            $heroes | Sort-Object -Property @(
+                @{ Expression = { -1 * (ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $_ -Path @('season_time_played_seconds') -Default $_.time_played_seconds)) } },
+                @{ Expression = { -1 * (ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $_ -Path @('season_games_played') -Default $_.games_played)) } },
+                @{ Expression = { Get-OwReportObjectValue -Object $_ -Path @('hero_name') -Default '' } }
+            )
+        )
+
+        $allHeroRecord = $null
+        if ($state.hero_categories.ContainsKey('all-heroes')) {
+            $allHeroRecord = Get-OwReportInfluxHeroMetricRecord -HeroKey 'all-heroes' -HeroCategoryMap $state.hero_categories['all-heroes'] -HeroCatalog $HeroCatalog
+        }
+
+        $metrics = if ($null -ne $allHeroRecord) {
+            [ordered]@{
+                kda = $allHeroRecord.kda
+                winrate = $allHeroRecord.winrate
+                games_played = $allHeroRecord.games_played
+                games_won = $allHeroRecord.games_won
+                games_lost = $allHeroRecord.games_lost
+                time_played_seconds = $allHeroRecord.time_played_seconds
+                total = $allHeroRecord.total
+                average = $allHeroRecord.average
+            }
+        }
+        else {
+            Get-OwReportAggregateMetricsFromHeroes -HeroRecords $heroes
+        }
+
+        $roles = Get-OwReportAggregateRoleMetricsFromHeroes -HeroRecords $heroes
+        $preferredRole = Get-OwReportPreferredRole -Roles $roles -RankSummary $rankSummary
+        $profile = New-OwReportInfluxPlaceholderProfile -DisplayName $PlayerConfig.display_name -RankSummary $rankSummary -Timestamp $timestamp -SummaryRow $PlayerSummaryRow
+        $snapshotWarnings = @($Warnings)
+        $fetchStatus = $(if (@($FailedMeasurements).Count -gt 0) { 'partial' } else { 'success' })
+        $title = Get-OwReportObjectValue -Object $profile -Path @('title') -Default 'Unranked'
+
+        $snapshots += [ordered]@{
+            snapshot_id = '{0}-{1}' -f $state.run_id, $PlayerConfig.slug
+            run_id = $state.run_id
+            captured_at = ([DateTimeOffset]::Parse($timestamp).ToString('o'))
+            player_id = $PlayerConfig.player_id
+            player_slug = $PlayerConfig.slug
+            display_name = $PlayerConfig.display_name
+            battle_tag = $PlayerConfig.battle_tag
+            notes = $PlayerConfig.notes
+            provider = 'influxdb'
+            fetch_status = $fetchStatus
+            wide_match_context = 'mixed'
+            warnings = @($snapshotWarnings | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            profile = $profile
+            metrics = $metrics
+            roles = $roles
+            ranks = $rankSummary
+            normalized = [ordered]@{
+                preferred_role = $preferredRole
+                data_quality = $fetchStatus
+                top_heroes = @($heroes | Select-Object -First 3 | ForEach-Object { $_.hero_name })
+            }
+            heroes = $heroes
+            raw_payloads = $null
+            title = $title
+        }
+    }
+
+    return [ordered]@{
+        success = ($snapshots.Count -gt 0)
+        player = $PlayerConfig
+        snapshots = $snapshots
+        warnings = @($Warnings | Select-Object -Unique)
+        errors = $(if ($snapshots.Count -gt 0) { @() } else { @("No database-backed competitive snapshots were found for $($PlayerConfig.display_name).") })
+        failed_measurements = @($FailedMeasurements | Select-Object -Unique)
+    }
+}
+
 function Get-OwReportInfluxPlayerSnapshots {
     [CmdletBinding()]
     param(
@@ -487,163 +701,214 @@ function Get-OwReportInfluxPlayerSnapshots {
         }
     }
 
-    $snapshotLookup = @{}
-    $ensureSnapshotState = {
-        param([string]$Timestamp)
+    return (ConvertTo-OwReportInfluxPlayerSnapshotSet `
+        -PlayerConfig $PlayerConfig `
+        -HeroCatalog $HeroCatalog `
+        -PlayerSummaryRow $playerSummaryRow `
+        -RankRows @($rowsByMeasurement['competitive_rank']) `
+        -RowsByMeasurement $rowsByMeasurement `
+        -Warnings @($warnings) `
+        -FailedMeasurements @($failedMeasurements))
+}
 
-        if (-not $snapshotLookup.ContainsKey($Timestamp)) {
-            $snapshotLookup[$Timestamp] = [ordered]@{
-                captured_at = $Timestamp
-                run_id = ConvertTo-OwReportInfluxRunId -Timestamp $Timestamp
-                rank_roles = @{}
-                hero_categories = @{}
-                rank_season = $null
-            }
-        }
+function Get-OwReportInfluxBulkLatestPlayerSummaries {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Client,
+        [Parameter(Mandatory = $true)]
+        [object[]]$Players
+    )
 
-        return $snapshotLookup[$Timestamp]
-    }
-
-    foreach ($rankRow in @($rowsByMeasurement['competitive_rank'])) {
-        $timestamp = Get-OwReportObjectValue -Object $rankRow -Path @('time')
-        if ([string]::IsNullOrWhiteSpace($timestamp)) {
-            continue
-        }
-
-        $state = & $ensureSnapshotState $timestamp
-        $role = ConvertTo-OwReportRoleKey -Role (Get-OwReportObjectValue -Object $rankRow -Path @('role'))
-        if ([string]::IsNullOrWhiteSpace($role)) {
-            continue
-        }
-
-        $state.rank_roles[$role] = [ordered]@{
-            role = $role
-            raw = [ordered]@{
-                division = Get-OwReportObjectValue -Object $rankRow -Path @('division')
-                tier = Get-OwReportObjectValue -Object $rankRow -Path @('tier')
-            }
-            label = $null
-            ordinal = ConvertTo-RankOrdinal -Rank ([ordered]@{
-                division = Get-OwReportObjectValue -Object $rankRow -Path @('division')
-                tier = Get-OwReportObjectValue -Object $rankRow -Path @('tier')
-            })
-        }
-        $state.rank_season = Get-OwReportObjectValue -Object $rankRow -Path @('season')
-    }
-
-    foreach ($measurement in $careerMeasurements) {
-        $categoryKey = $measurement -replace '^career_stats_', ''
-        foreach ($row in @($rowsByMeasurement[$measurement])) {
-            $timestamp = Get-OwReportObjectValue -Object $row -Path @('time')
-            if ([string]::IsNullOrWhiteSpace($timestamp)) {
-                continue
-            }
-
-            $heroKey = ConvertTo-OwReportHeroKey -Hero (Get-OwReportObjectValue -Object $row -Path @('hero') -Default '')
-            if ([string]::IsNullOrWhiteSpace($heroKey)) {
-                continue
-            }
-
-            $state = & $ensureSnapshotState $timestamp
-            if (-not $state.hero_categories.ContainsKey($heroKey)) {
-                $state.hero_categories[$heroKey] = @{}
-            }
-
-            $state.hero_categories[$heroKey][$categoryKey] = ConvertTo-OwReportInfluxCategoryObject -Row $row
+    $playerRegex = Get-OwReportInfluxPlayerRegexPattern -Players $Players
+    if ([string]::IsNullOrWhiteSpace($playerRegex)) {
+        return [ordered]@{
+            ok = $true
+            rows_by_player = @{}
+            error = $null
         }
     }
 
-    $snapshots = @()
-    foreach ($timestamp in @($snapshotLookup.Keys | Sort-Object)) {
-        $state = $snapshotLookup[$timestamp]
-        $rankSummary = Normalize-OwReportRankSummary -RankSummary ([ordered]@{
-            platform = 'pc'
-            season = $state.rank_season
-            roles = @($state.rank_roles.Values | Sort-Object role)
-        })
-
-        $heroes = @()
-        foreach ($heroKey in @($state.hero_categories.Keys | Sort-Object)) {
-            if ($heroKey -eq 'all-heroes') {
-                continue
-            }
-
-            $heroRecord = Get-OwReportInfluxHeroMetricRecord -HeroKey $heroKey -HeroCategoryMap $state.hero_categories[$heroKey] -HeroCatalog $HeroCatalog
-            if ($null -ne $heroRecord) {
-                $heroes += $heroRecord
-            }
+    $summaryFields = @('avatar', 'endorsement_frame', 'endorsement_level', 'namecard', 'title', 'username')
+    $query = 'SELECT {0} FROM "player_summary" WHERE "player" =~ /{1}/ GROUP BY "player"' -f (Get-OwReportInfluxLastFieldSelectClause -Fields $summaryFields), $playerRegex
+    $result = Invoke-OwReportInfluxQuery -Client $Client -Query $query
+    if (-not $result.ok) {
+        return [ordered]@{
+            ok = $false
+            rows_by_player = @{}
+            error = $result.error
         }
+    }
 
-        $heroes = @(
-            $heroes | Sort-Object -Property @(
-                @{ Expression = { -1 * (ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $_ -Path @('season_time_played_seconds') -Default $_.time_played_seconds)) } },
-                @{ Expression = { -1 * (ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $_ -Path @('season_games_played') -Default $_.games_played)) } },
-                @{ Expression = { Get-OwReportObjectValue -Object $_ -Path @('hero_name') -Default '' } }
-            )
-        )
-
-        $allHeroRecord = $null
-        if ($state.hero_categories.ContainsKey('all-heroes')) {
-            $allHeroRecord = Get-OwReportInfluxHeroMetricRecord -HeroKey 'all-heroes' -HeroCategoryMap $state.hero_categories['all-heroes'] -HeroCatalog $HeroCatalog
-        }
-
-        $metrics = if ($null -ne $allHeroRecord) {
-            [ordered]@{
-                kda = $allHeroRecord.kda
-                winrate = $allHeroRecord.winrate
-                games_played = $allHeroRecord.games_played
-                games_won = $allHeroRecord.games_won
-                games_lost = $allHeroRecord.games_lost
-                time_played_seconds = $allHeroRecord.time_played_seconds
-                total = $allHeroRecord.total
-                average = $allHeroRecord.average
-            }
-        }
-        else {
-            Get-OwReportAggregateMetricsFromHeroes -HeroRecords $heroes
-        }
-
-        $roles = Get-OwReportAggregateRoleMetricsFromHeroes -HeroRecords $heroes
-        $preferredRole = Get-OwReportPreferredRole -Roles $roles -RankSummary $rankSummary
-        $profile = New-OwReportInfluxPlaceholderProfile -DisplayName $PlayerConfig.display_name -RankSummary $rankSummary -Timestamp $timestamp -SummaryRow $playerSummaryRow
-        $snapshotWarnings = @($warnings)
-        $fetchStatus = $(if ($failedMeasurements.Count -gt 0) { 'partial' } else { 'success' })
-        $title = Get-OwReportObjectValue -Object $profile -Path @('title') -Default 'Unranked'
-
-        $snapshots += [ordered]@{
-            snapshot_id = '{0}-{1}' -f $state.run_id, $PlayerConfig.slug
-            run_id = $state.run_id
-            captured_at = ([DateTimeOffset]::Parse($timestamp).ToString('o'))
-            player_id = $PlayerConfig.player_id
-            player_slug = $PlayerConfig.slug
-            display_name = $PlayerConfig.display_name
-            battle_tag = $PlayerConfig.battle_tag
-            notes = $PlayerConfig.notes
-            provider = 'influxdb'
-            fetch_status = $fetchStatus
-            wide_match_context = 'mixed'
-            warnings = @($snapshotWarnings | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-            profile = $profile
-            metrics = $metrics
-            roles = $roles
-            ranks = $rankSummary
-            normalized = [ordered]@{
-                preferred_role = $preferredRole
-                data_quality = $fetchStatus
-                top_heroes = @($heroes | Select-Object -First 3 | ForEach-Object { $_.hero_name })
-            }
-            heroes = $heroes
-            raw_payloads = $null
-            title = $title
+    $rowsByPlayer = @{}
+    foreach ($row in @($result.rows)) {
+        $playerId = Get-OwReportObjectValue -Object $row -Path @('player')
+        if (-not [string]::IsNullOrWhiteSpace($playerId)) {
+            $rowsByPlayer[$playerId] = $row
         }
     }
 
     return [ordered]@{
-        success = ($snapshots.Count -gt 0)
-        player = $PlayerConfig
-        snapshots = $snapshots
+        ok = $true
+        rows_by_player = $rowsByPlayer
+        error = $null
+    }
+}
+
+function Get-OwReportInfluxBulkLatestSeasons {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Client,
+        [Parameter(Mandatory = $true)]
+        [object[]]$Players
+    )
+
+    $playerRegex = Get-OwReportInfluxPlayerRegexPattern -Players $Players
+    if ([string]::IsNullOrWhiteSpace($playerRegex)) {
+        return [ordered]@{
+            ok = $true
+            seasons_by_player = @{}
+            error = $null
+        }
+    }
+
+    $query = 'SELECT last("season") AS "season" FROM "competitive_rank" WHERE "player" =~ /{0}/ GROUP BY "player"' -f $playerRegex
+    $result = Invoke-OwReportInfluxQuery -Client $Client -Query $query
+    if (-not $result.ok) {
+        return [ordered]@{
+            ok = $false
+            seasons_by_player = @{}
+            error = $result.error
+        }
+    }
+
+    $seasonsByPlayer = @{}
+    foreach ($row in @($result.rows)) {
+        $playerId = Get-OwReportObjectValue -Object $row -Path @('player')
+        $seasonValue = Get-OwReportObjectValue -Object $row -Path @('season')
+        if (-not [string]::IsNullOrWhiteSpace($playerId) -and $null -ne $seasonValue -and $seasonValue -ne '') {
+            $seasonsByPlayer[$playerId] = [int]$seasonValue
+        }
+    }
+
+    return [ordered]@{
+        ok = $true
+        seasons_by_player = $seasonsByPlayer
+        error = $null
+    }
+}
+
+function Get-OwReportInfluxBulkRankRows {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Client,
+        [Parameter(Mandatory = $true)]
+        [object[]]$Players,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$LatestSeasonByPlayer
+    )
+
+    $clauses = @(
+        foreach ($player in @($Players)) {
+            $playerId = Get-OwReportObjectValue -Object $player -Path @('player_id')
+            if ([string]::IsNullOrWhiteSpace($playerId) -or -not $LatestSeasonByPlayer.ContainsKey($playerId)) {
+                continue
+            }
+
+            '("player"=''{0}'' AND "season"={1})' -f $playerId.Replace("'", "''"), $LatestSeasonByPlayer[$playerId]
+        }
+    )
+
+    if ($clauses.Count -eq 0) {
+        return [ordered]@{
+            ok = $true
+            rows = @()
+            error = $null
+        }
+    }
+
+    $query = 'SELECT {0} FROM "competitive_rank" WHERE {1} GROUP BY time(1h),"player","role" fill(none) ORDER BY time ASC' -f (Get-OwReportInfluxLastFieldSelectClause -Fields @('tier', 'division', 'season')), ($clauses -join ' OR ')
+    $result = Invoke-OwReportInfluxQuery -Client $Client -Query $query
+    if (-not $result.ok) {
+        return [ordered]@{
+            ok = $false
+            rows = @()
+            error = $result.error
+        }
+    }
+
+    return [ordered]@{
+        ok = $true
+        rows = @($result.rows)
+        error = $null
+    }
+}
+
+function Get-OwReportInfluxCareerMeasurementFieldMap {
+    [CmdletBinding()]
+    param()
+
+    return [ordered]@{
+        career_stats_assists = @('assists', 'healing_done')
+        career_stats_average = @('eliminations_avg_per_10_min', 'assists_avg_per_10_min', 'deaths_avg_per_10_min', 'all_damage_done_avg_per_10_min', 'damage_done_avg_per_10_min', 'healing_done_avg_per_10_min')
+        career_stats_combat = @('eliminations', 'deaths', 'all_damage_done', 'damage_done')
+        career_stats_game = @('games_played', 'games_won', 'hero_wins', 'games_lost', 'time_played', 'win_percentage')
+    }
+}
+
+function Get-OwReportInfluxBulkCareerRows {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Client,
+        [Parameter(Mandatory = $true)]
+        [object[]]$Players,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$SeasonStartMsByPlayer,
+        [string]$Gamemode = 'competitive'
+    )
+
+    $playerRegex = Get-OwReportInfluxPlayerRegexPattern -Players $Players
+    $globalSeasonStartMs = $null
+    if (@($SeasonStartMsByPlayer.Values).Count -gt 0) {
+        $globalSeasonStartMs = (@($SeasonStartMsByPlayer.Values | Sort-Object))[0]
+    }
+
+    $fieldMap = Get-OwReportInfluxCareerMeasurementFieldMap
+    $rowsByMeasurement = @{}
+    foreach ($measurement in $fieldMap.Keys) {
+        $rowsByMeasurement[$measurement] = @()
+    }
+
+    if ([string]::IsNullOrWhiteSpace($playerRegex) -or $null -eq $globalSeasonStartMs) {
+        return [ordered]@{
+            ok = $true
+            rows_by_measurement = $rowsByMeasurement
+            warnings = @()
+            failed_measurements = @()
+        }
+    }
+
+    $warnings = @()
+    $failedMeasurements = @()
+    foreach ($measurement in $fieldMap.Keys) {
+        $query = 'SELECT {0} FROM "{1}" WHERE "player" =~ /{2}/ AND "gamemode"=''{3}'' AND time >= {4}ms GROUP BY time(1h),"player","hero" fill(none) ORDER BY time ASC' -f (Get-OwReportInfluxLastFieldSelectClause -Fields $fieldMap[$measurement]), $measurement, $playerRegex, $Gamemode.Replace("'", "''"), $globalSeasonStartMs
+        $result = Invoke-OwReportInfluxQuery -Client $Client -Query $query
+        if ($result.ok) {
+            $rowsByMeasurement[$measurement] = @($result.rows)
+        }
+        else {
+            $failedMeasurements += $measurement
+            $warnings += ("{0} bulk query failed: {1}" -f $measurement, (Format-OwReportProviderErrorMessage -ErrorDetail $result.error))
+        }
+    }
+
+    return [ordered]@{
+        ok = ($failedMeasurements.Count -lt $fieldMap.Keys.Count)
+        rows_by_measurement = $rowsByMeasurement
         warnings = @($warnings | Select-Object -Unique)
-        errors = $(if ($snapshots.Count -gt 0) { @() } else { @("No database-backed competitive snapshots were found for $($PlayerConfig.display_name).") })
         failed_measurements = @($failedMeasurements | Select-Object -Unique)
     }
 }
@@ -659,13 +924,126 @@ function Get-OwReportInfluxDataset {
 
     $client = New-OwReportInfluxClient -Config $Config
     $heroCatalog = Get-OwReportFallbackHeroCatalog
+    $players = @($Config.players)
     $allSnapshots = @()
     $failedPlayers = @()
     $playerWarnings = @()
 
-    foreach ($player in $Config.players) {
-        Write-OwReportLog -RunContext $RunContext -Message ("Querying database for {0} ({1})" -f $player.display_name, $player.player_id)
-        $result = Get-OwReportInfluxPlayerSnapshots -Client $client -PlayerConfig $player -HeroCatalog $heroCatalog
+    if ($players.Count -eq 0) {
+        return [ordered]@{
+            hero_catalog = $heroCatalog
+            snapshots = @()
+            run_records = @()
+            failed_players = @()
+            player_warnings = @()
+        }
+    }
+
+    Write-OwReportLog -RunContext $RunContext -Message ("Querying database in bulk for {0} tracked players" -f $players.Count)
+
+    $playerSummaryResult = Get-OwReportInfluxBulkLatestPlayerSummaries -Client $client -Players $players
+    $playerSummaryByPlayer = Get-OwReportObjectValue -Object $playerSummaryResult -Path @('rows_by_player') -Default @{}
+
+    $latestSeasonResult = Get-OwReportInfluxBulkLatestSeasons -Client $client -Players $players
+    $latestSeasonByPlayer = Get-OwReportObjectValue -Object $latestSeasonResult -Path @('seasons_by_player') -Default @{}
+
+    $rankRowsResult = Get-OwReportInfluxBulkRankRows -Client $client -Players $players -LatestSeasonByPlayer $latestSeasonByPlayer
+    $rankRows = @($(if ($rankRowsResult.ok) { $rankRowsResult.rows } else { @() }))
+    $rankRowsByPlayer = @{}
+    $seasonStartMsByPlayer = @{}
+    foreach ($rankRow in @($rankRows)) {
+        $playerId = Get-OwReportObjectValue -Object $rankRow -Path @('player')
+        if ([string]::IsNullOrWhiteSpace($playerId)) {
+            continue
+        }
+
+        if (-not $rankRowsByPlayer.ContainsKey($playerId)) {
+            $rankRowsByPlayer[$playerId] = @()
+        }
+
+        $rankRowsByPlayer[$playerId] += $rankRow
+
+        $timestampText = Get-OwReportObjectValue -Object $rankRow -Path @('time')
+        if (-not [string]::IsNullOrWhiteSpace($timestampText)) {
+            $timestampMs = [DateTimeOffset]::Parse($timestampText).ToUnixTimeMilliseconds()
+            if (-not $seasonStartMsByPlayer.ContainsKey($playerId) -or $timestampMs -lt $seasonStartMsByPlayer[$playerId]) {
+                $seasonStartMsByPlayer[$playerId] = $timestampMs
+            }
+        }
+    }
+
+    $careerRowsResult = Get-OwReportInfluxBulkCareerRows -Client $client -Players $players -SeasonStartMsByPlayer $seasonStartMsByPlayer -Gamemode (Get-OwReportObjectValue -Object $Config -Path @('provider', 'career_gamemode') -Default 'competitive')
+    $careerRowsByMeasurementByPlayer = @{}
+    foreach ($measurement in (Get-OwReportInfluxCareerMeasurementFieldMap).Keys) {
+        $careerRowsByMeasurementByPlayer[$measurement] = @{}
+    }
+
+    foreach ($measurement in $careerRowsByMeasurementByPlayer.Keys) {
+        foreach ($row in @(Get-OwReportObjectValue -Object $careerRowsResult -Path @('rows_by_measurement', $measurement) -Default @())) {
+            $playerId = Get-OwReportObjectValue -Object $row -Path @('player')
+            if ([string]::IsNullOrWhiteSpace($playerId) -or -not $seasonStartMsByPlayer.ContainsKey($playerId)) {
+                continue
+            }
+
+            $timestampText = Get-OwReportObjectValue -Object $row -Path @('time')
+            if ([string]::IsNullOrWhiteSpace($timestampText)) {
+                continue
+            }
+
+            $timestampMs = [DateTimeOffset]::Parse($timestampText).ToUnixTimeMilliseconds()
+            if ($timestampMs -lt $seasonStartMsByPlayer[$playerId]) {
+                continue
+            }
+
+            if (-not $careerRowsByMeasurementByPlayer[$measurement].ContainsKey($playerId)) {
+                $careerRowsByMeasurementByPlayer[$measurement][$playerId] = @()
+            }
+
+            $careerRowsByMeasurementByPlayer[$measurement][$playerId] += $row
+        }
+    }
+
+    foreach ($player in $players) {
+        Write-OwReportLog -RunContext $RunContext -Message ("Shaping database results for {0} ({1})" -f $player.display_name, $player.player_id)
+
+        $warnings = @()
+        $failedMeasurements = @()
+
+        if (-not $playerSummaryResult.ok) {
+            $warnings += ("player_summary bulk query failed: {0}" -f (Format-OwReportProviderErrorMessage -ErrorDetail $playerSummaryResult.error))
+        }
+
+        if (-not $latestSeasonResult.ok) {
+            $failedMeasurements += 'competitive_rank'
+            $warnings += ("competitive_rank latest-season bulk query failed: {0}" -f (Format-OwReportProviderErrorMessage -ErrorDetail $latestSeasonResult.error))
+        }
+
+        if (-not $rankRowsResult.ok) {
+            $failedMeasurements += 'competitive_rank'
+            $warnings += ("competitive_rank bulk query failed: {0}" -f (Format-OwReportProviderErrorMessage -ErrorDetail $rankRowsResult.error))
+        }
+
+        if (@($careerRowsResult.warnings).Count -gt 0) {
+            $warnings += @($careerRowsResult.warnings)
+        }
+        if (@($careerRowsResult.failed_measurements).Count -gt 0) {
+            $failedMeasurements += @($careerRowsResult.failed_measurements)
+        }
+
+        $playerRowsByMeasurement = @{}
+        foreach ($measurement in $careerRowsByMeasurementByPlayer.Keys) {
+            $playerRowsByMeasurement[$measurement] = @((Get-OwReportObjectValue -Object $careerRowsByMeasurementByPlayer[$measurement] -Path @($player.player_id) -Default @()))
+        }
+
+        $result = ConvertTo-OwReportInfluxPlayerSnapshotSet `
+            -PlayerConfig $player `
+            -HeroCatalog $heroCatalog `
+            -PlayerSummaryRow (Get-OwReportObjectValue -Object $playerSummaryByPlayer -Path @($player.player_id)) `
+            -RankRows @((Get-OwReportObjectValue -Object $rankRowsByPlayer -Path @($player.player_id) -Default @())) `
+            -RowsByMeasurement $playerRowsByMeasurement `
+            -Warnings @($warnings) `
+            -FailedMeasurements @($failedMeasurements)
+
         if (-not $result.success) {
             $failedPlayers += [ordered]@{
                 display_name = $player.display_name

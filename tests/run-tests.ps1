@@ -351,6 +351,10 @@ $wideAssessment = Get-OwReportWideGroupAssessment -Assignments @(
 )
 Assert-Equal -Actual $wideAssessment.label -Expected 'wide' -Message 'Wide group assessment flags Masters-inclusive spreads above three divisions'
 
+$emptyOptimizer = Get-OwReportTeamOptimizerModel -PlayerAnalyses @()
+Assert-Equal -Actual $emptyOptimizer.candidate_players.Count -Expected 0 -Message 'Empty optimizer input returns a safe empty candidate list'
+Assert-True -Condition (@($emptyOptimizer.warnings).Count -gt 0) -Message 'Empty optimizer input surfaces a helpful warning instead of crashing'
+
 $singleRunRoot = Join-Path $PSScriptRoot 'tmp\single-run-site'
 $singleRunSiteModel = & $owReportModule {
     param($TempRoot)
