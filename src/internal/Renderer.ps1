@@ -325,7 +325,8 @@ function Publish-OwReportSite {
         [Parameter(Mandatory = $true)]
         [hashtable]$SiteModel,
         [Parameter(Mandatory = $true)]
-        [hashtable]$RunContext
+        [hashtable]$RunContext,
+        [hashtable]$PublishedState
     )
 
     $runOutputDir = Ensure-OwReportDirectory -Path (Join-Path $Config.output_dir ('runs\{0}' -f $RunContext.run_id))
@@ -377,6 +378,11 @@ function Publish-OwReportSite {
     Write-OwReportJsonFile -Path (Join-Path $runDataDir 'site-model.json') -Value $SiteModel -Compress
     Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'site-model.json') -Value $SiteModel -Compress
     Write-OwReportJsonFile -Path (Join-Path $docsDataDir 'site-model.json') -Value $SiteModel -Compress
+    if ($PSBoundParameters.ContainsKey('PublishedState') -and $null -ne $PublishedState) {
+        Write-OwReportJsonFile -Path (Join-Path $runDataDir 'published-state.json') -Value $PublishedState -Compress
+        Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'published-state.json') -Value $PublishedState -Compress
+        Write-OwReportJsonFile -Path (Join-Path $docsDataDir 'published-state.json') -Value $PublishedState -Compress
+    }
 
     foreach ($player in $SiteModel.players) {
         $playerHtml = Get-OwReportPlayerHtml -SiteModel $SiteModel -Player $player

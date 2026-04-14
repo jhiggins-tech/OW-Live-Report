@@ -355,6 +355,52 @@ $emptyOptimizer = Get-OwReportTeamOptimizerModel -PlayerAnalyses @()
 Assert-Equal -Actual $emptyOptimizer.candidate_players.Count -Expected 0 -Message 'Empty optimizer input returns a safe empty candidate list'
 Assert-True -Condition (@($emptyOptimizer.warnings).Count -gt 0) -Message 'Empty optimizer input surfaces a helpful warning instead of crashing'
 
+$existingIncrementalSnapshots = @(
+    (New-TestSnapshot -DisplayName 'IncA' -PlayerSlug 'inca' -PlayerId 'IncA-1000' -CapturedAt '2026-04-10T10:00:00+10:00' -Kda 2.1 -Winrate 51 -RankOrdinal 13 -PreferredRole 'damage' -Heroes @(
+        [ordered]@{ hero_key = 'ana'; hero_name = 'Ana'; hero_role = 'support'; games_played = 8; time_played_seconds = 2400; winrate = 51; kda = 2.1; average = [ordered]@{ eliminations = 8; deaths = 6 } }
+    )),
+    (New-TestSnapshot -DisplayName 'IncB' -PlayerSlug 'incb' -PlayerId 'IncB-1000' -CapturedAt '2026-04-10T11:00:00+10:00' -Kda 2.0 -Winrate 49 -RankOrdinal 10 -PreferredRole 'support' -Heroes @(
+        [ordered]@{ hero_key = 'mercy'; hero_name = 'Mercy'; hero_role = 'support'; games_played = 9; time_played_seconds = 2500; winrate = 49; kda = 2.0; average = [ordered]@{ eliminations = 4; deaths = 7 } }
+    ))
+)
+$existingIncrementalSnapshots[0].ranks | Add-Member -NotePropertyName season -NotePropertyValue 21 -Force
+$existingIncrementalSnapshots[1].ranks | Add-Member -NotePropertyName season -NotePropertyValue 20 -Force
+
+$incrementalPlan = & $owReportModule {
+    param($ExistingSnapshots)
+
+    Get-OwReportInfluxIncrementalPlan -Players @(
+        [ordered]@{ player_id = 'IncA-1000' },
+        [ordered]@{ player_id = 'IncB-1000' },
+        [ordered]@{ player_id = 'IncC-1000' }
+    ) -ExistingSnapshots $ExistingSnapshots -LatestSeasonByPlayer @{
+        'IncA-1000' = 21
+        'IncB-1000' = 21
+        'IncC-1000' = 21
+    }
+} $existingIncrementalSnapshots
+
+Assert-True -Condition ($incrementalPlan.rank_query_start_ms_by_player.ContainsKey('IncA-1000')) -Message 'Incremental plan reuses the latest timestamp when the stored season matches'
+Assert-True -Condition (-not $incrementalPlan.rank_query_start_ms_by_player.ContainsKey('IncB-1000')) -Message 'Incremental plan falls back to a full current-season pull when the season changes'
+Assert-True -Condition (-not $incrementalPlan.rank_query_start_ms_by_player.ContainsKey('IncC-1000')) -Message 'Incremental plan falls back to a full current-season pull when there is no prior snapshot'
+
+$mergedSnapshots = & $owReportModule {
+    param($ExistingSnapshots)
+
+    Merge-OwReportInfluxSnapshots -ExistingSnapshots @($ExistingSnapshots[0]) -NewSnapshots @(
+        [ordered]@{
+            run_id = $ExistingSnapshots[0].run_id
+            captured_at = $ExistingSnapshots[0].captured_at
+            player_slug = $ExistingSnapshots[0].player_slug
+            player_id = $ExistingSnapshots[0].player_id
+            metrics = [ordered]@{ kda = 9.9 }
+        },
+        $ExistingSnapshots[1]
+    )
+} $existingIncrementalSnapshots
+Assert-Equal -Actual $mergedSnapshots.Count -Expected 2 -Message 'Incremental snapshot merge keeps one entry per snapshot id'
+Assert-Equal -Actual $mergedSnapshots[0].metrics.kda -Expected 9.9 -Message 'Incremental snapshot merge lets newer data replace the older copy'
+
 $singleRunRoot = Join-Path $PSScriptRoot 'tmp\single-run-site'
 $singleRunSiteModel = & $owReportModule {
     param($TempRoot)

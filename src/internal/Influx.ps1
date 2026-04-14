@@ -361,6 +361,155 @@ function Get-OwReportDynamicWideMatchContext {
     }
 }
 
+function Get-OwReportInfluxPublishedStatePath {
+    [CmdletBinding()]
+    param()
+
+    return (Join-Path $script:OwReportProjectRoot 'docs\data\published-state.json')
+}
+
+function Read-OwReportInfluxPublishedState {
+    [CmdletBinding()]
+    param()
+
+    $state = Read-OwReportJsonFile -Path (Get-OwReportInfluxPublishedStatePath)
+    if ($null -eq $state) {
+        return [ordered]@{
+            snapshots = @()
+            run_records = @()
+        }
+    }
+
+    return [ordered]@{
+        snapshots = @((Get-OwReportObjectValue -Object $state -Path @('snapshots') -Default @()))
+        run_records = @((Get-OwReportObjectValue -Object $state -Path @('run_records') -Default @()))
+    }
+}
+
+function Merge-OwReportInfluxSnapshots {
+    [CmdletBinding()]
+    param(
+        [object[]]$ExistingSnapshots = @(),
+        [object[]]$NewSnapshots = @()
+    )
+
+    $snapshotLookup = @{}
+    foreach ($snapshot in @($ExistingSnapshots) + @($NewSnapshots)) {
+        if ($null -eq $snapshot) {
+            continue
+        }
+
+        $snapshotId = Get-OwReportObjectValue -Object $snapshot -Path @('snapshot_id')
+        if ([string]::IsNullOrWhiteSpace($snapshotId)) {
+            $snapshotId = '{0}|{1}' -f (
+                Get-OwReportObjectValue -Object $snapshot -Path @('run_id') -Default ''
+            ), (
+                Get-OwReportObjectValue -Object $snapshot -Path @('player_slug') -Default ''
+            )
+        }
+
+        if ([string]::IsNullOrWhiteSpace($snapshotId)) {
+            continue
+        }
+
+        $snapshotLookup[$snapshotId] = $snapshot
+    }
+
+    return @(
+        $snapshotLookup.Values |
+            Sort-Object -Property @(
+                @{ Expression = { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' } },
+                @{ Expression = { Get-OwReportObjectValue -Object $_ -Path @('player_slug') -Default '' } }
+            )
+    )
+}
+
+function Merge-OwReportInfluxRunRecords {
+    [CmdletBinding()]
+    param(
+        [object[]]$ExistingRunRecords = @(),
+        [object[]]$NewRunRecords = @()
+    )
+
+    $runLookup = @{}
+    foreach ($runRecord in @($ExistingRunRecords) + @($NewRunRecords)) {
+        if ($null -eq $runRecord) {
+            continue
+        }
+
+        $runId = Get-OwReportObjectValue -Object $runRecord -Path @('run_id')
+        if ([string]::IsNullOrWhiteSpace($runId)) {
+            continue
+        }
+
+        $runLookup[$runId] = $runRecord
+    }
+
+    return @(
+        $runLookup.Values |
+            Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' }
+    )
+}
+
+function Get-OwReportInfluxLatestSnapshotsByPlayer {
+    [CmdletBinding()]
+    param(
+        [object[]]$Snapshots = @()
+    )
+
+    $latestByPlayer = @{}
+    foreach ($snapshot in @($Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })) {
+        $playerId = Get-OwReportObjectValue -Object $snapshot -Path @('player_id')
+        if ([string]::IsNullOrWhiteSpace($playerId)) {
+            continue
+        }
+
+        $latestByPlayer[$playerId] = $snapshot
+    }
+
+    return $latestByPlayer
+}
+
+function Get-OwReportInfluxIncrementalPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Players,
+        [object[]]$ExistingSnapshots,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$LatestSeasonByPlayer
+    )
+
+    $latestExistingSnapshotByPlayer = Get-OwReportInfluxLatestSnapshotsByPlayer -Snapshots $ExistingSnapshots
+    $rankQueryStartMsByPlayer = @{}
+
+    foreach ($player in @($Players)) {
+        $playerId = Get-OwReportObjectValue -Object $player -Path @('player_id')
+        if ([string]::IsNullOrWhiteSpace($playerId) -or -not $LatestSeasonByPlayer.ContainsKey($playerId)) {
+            continue
+        }
+
+        $existingSnapshot = Get-OwReportObjectValue -Object $latestExistingSnapshotByPlayer -Path @($playerId)
+        if ($null -eq $existingSnapshot) {
+            continue
+        }
+
+        $existingSeason = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $existingSnapshot -Path @('ranks', 'season') -Default 0) -Default 0
+        $latestSeason = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $LatestSeasonByPlayer -Path @($playerId) -Default 0) -Default 0
+        $capturedAt = Get-OwReportObjectValue -Object $existingSnapshot -Path @('captured_at')
+        if ($existingSeason -ne $latestSeason -or [string]::IsNullOrWhiteSpace($capturedAt)) {
+            continue
+        }
+
+        $rankQueryStartMsByPlayer[$playerId] = [DateTimeOffset]::Parse($capturedAt).ToUnixTimeMilliseconds()
+    }
+
+    return [ordered]@{
+        latest_snapshot_by_player = $latestExistingSnapshotByPlayer
+        rank_query_start_ms_by_player = $rankQueryStartMsByPlayer
+    }
+}
+
 function Get-OwReportInfluxPlayerMeasurementRows {
     [CmdletBinding()]
     param(
@@ -807,7 +956,8 @@ function Get-OwReportInfluxBulkRankRows {
         [Parameter(Mandatory = $true)]
         [object[]]$Players,
         [Parameter(Mandatory = $true)]
-        [hashtable]$LatestSeasonByPlayer
+        [hashtable]$LatestSeasonByPlayer,
+        [hashtable]$QueryStartMsByPlayer = @{}
     )
 
     $clauses = @(
@@ -817,7 +967,12 @@ function Get-OwReportInfluxBulkRankRows {
                 continue
             }
 
-            '("player"=''{0}'' AND "season"={1})' -f $playerId.Replace("'", "''"), $LatestSeasonByPlayer[$playerId]
+            $timeClause = ''
+            if ($QueryStartMsByPlayer.ContainsKey($playerId)) {
+                $timeClause = ' AND time > {0}ms' -f $QueryStartMsByPlayer[$playerId]
+            }
+
+            '("player"=''{0}'' AND "season"={1}{2})' -f $playerId.Replace("'", "''"), $LatestSeasonByPlayer[$playerId], $timeClause
         }
     )
 
@@ -866,14 +1021,14 @@ function Get-OwReportInfluxBulkCareerRows {
         [Parameter(Mandatory = $true)]
         [object[]]$Players,
         [Parameter(Mandatory = $true)]
-        [hashtable]$SeasonStartMsByPlayer,
+        [hashtable]$QueryStartMsByPlayer,
         [string]$Gamemode = 'competitive'
     )
 
     $playerRegex = Get-OwReportInfluxPlayerRegexPattern -Players $Players
-    $globalSeasonStartMs = $null
-    if (@($SeasonStartMsByPlayer.Values).Count -gt 0) {
-        $globalSeasonStartMs = (@($SeasonStartMsByPlayer.Values | Sort-Object))[0]
+    $globalQueryStartMs = $null
+    if (@($QueryStartMsByPlayer.Values).Count -gt 0) {
+        $globalQueryStartMs = (@($QueryStartMsByPlayer.Values | Sort-Object))[0]
     }
 
     $fieldMap = Get-OwReportInfluxCareerMeasurementFieldMap
@@ -882,7 +1037,7 @@ function Get-OwReportInfluxBulkCareerRows {
         $rowsByMeasurement[$measurement] = @()
     }
 
-    if ([string]::IsNullOrWhiteSpace($playerRegex) -or $null -eq $globalSeasonStartMs) {
+    if ([string]::IsNullOrWhiteSpace($playerRegex) -or $null -eq $globalQueryStartMs) {
         return [ordered]@{
             ok = $true
             rows_by_measurement = $rowsByMeasurement
@@ -894,7 +1049,7 @@ function Get-OwReportInfluxBulkCareerRows {
     $warnings = @()
     $failedMeasurements = @()
     foreach ($measurement in $fieldMap.Keys) {
-        $query = 'SELECT {0} FROM "{1}" WHERE "player" =~ /{2}/ AND "gamemode"=''{3}'' AND time >= {4}ms GROUP BY time(1h),"player","hero" fill(none) ORDER BY time ASC' -f (Get-OwReportInfluxLastFieldSelectClause -Fields $fieldMap[$measurement]), $measurement, $playerRegex, $Gamemode.Replace("'", "''"), $globalSeasonStartMs
+        $query = 'SELECT {0} FROM "{1}" WHERE "player" =~ /{2}/ AND "gamemode"=''{3}'' AND time >= {4}ms GROUP BY time(1h),"player","hero" fill(none) ORDER BY time ASC' -f (Get-OwReportInfluxLastFieldSelectClause -Fields $fieldMap[$measurement]), $measurement, $playerRegex, $Gamemode.Replace("'", "''"), $globalQueryStartMs
         $result = Invoke-OwReportInfluxQuery -Client $Client -Query $query
         if ($result.ok) {
             $rowsByMeasurement[$measurement] = @($result.rows)
@@ -919,13 +1074,16 @@ function Get-OwReportInfluxDataset {
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
         [Parameter(Mandatory = $true)]
-        [hashtable]$RunContext
+        [hashtable]$RunContext,
+        [hashtable]$PublishedState = @{ snapshots = @(); run_records = @() }
     )
 
     $client = New-OwReportInfluxClient -Config $Config
     $heroCatalog = Get-OwReportFallbackHeroCatalog
     $players = @($Config.players)
-    $allSnapshots = @()
+    $existingSnapshots = @((Get-OwReportObjectValue -Object $PublishedState -Path @('snapshots') -Default @()))
+    $existingRunRecords = @((Get-OwReportObjectValue -Object $PublishedState -Path @('run_records') -Default @()))
+    $newSnapshots = @()
     $failedPlayers = @()
     $playerWarnings = @()
 
@@ -947,10 +1105,14 @@ function Get-OwReportInfluxDataset {
     $latestSeasonResult = Get-OwReportInfluxBulkLatestSeasons -Client $client -Players $players
     $latestSeasonByPlayer = Get-OwReportObjectValue -Object $latestSeasonResult -Path @('seasons_by_player') -Default @{}
 
-    $rankRowsResult = Get-OwReportInfluxBulkRankRows -Client $client -Players $players -LatestSeasonByPlayer $latestSeasonByPlayer
+    $incrementalPlan = Get-OwReportInfluxIncrementalPlan -Players $players -ExistingSnapshots $existingSnapshots -LatestSeasonByPlayer $latestSeasonByPlayer
+    $existingLatestSnapshotByPlayer = Get-OwReportObjectValue -Object $incrementalPlan -Path @('latest_snapshot_by_player') -Default @{}
+    $rankQueryStartMsByPlayer = Get-OwReportObjectValue -Object $incrementalPlan -Path @('rank_query_start_ms_by_player') -Default @{}
+
+    $rankRowsResult = Get-OwReportInfluxBulkRankRows -Client $client -Players $players -LatestSeasonByPlayer $latestSeasonByPlayer -QueryStartMsByPlayer $rankQueryStartMsByPlayer
     $rankRows = @($(if ($rankRowsResult.ok) { $rankRowsResult.rows } else { @() }))
     $rankRowsByPlayer = @{}
-    $seasonStartMsByPlayer = @{}
+    $careerQueryStartMsByPlayer = @{}
     foreach ($rankRow in @($rankRows)) {
         $playerId = Get-OwReportObjectValue -Object $rankRow -Path @('player')
         if ([string]::IsNullOrWhiteSpace($playerId)) {
@@ -966,13 +1128,19 @@ function Get-OwReportInfluxDataset {
         $timestampText = Get-OwReportObjectValue -Object $rankRow -Path @('time')
         if (-not [string]::IsNullOrWhiteSpace($timestampText)) {
             $timestampMs = [DateTimeOffset]::Parse($timestampText).ToUnixTimeMilliseconds()
-            if (-not $seasonStartMsByPlayer.ContainsKey($playerId) -or $timestampMs -lt $seasonStartMsByPlayer[$playerId]) {
-                $seasonStartMsByPlayer[$playerId] = $timestampMs
+            if (-not $careerQueryStartMsByPlayer.ContainsKey($playerId) -or $timestampMs -lt $careerQueryStartMsByPlayer[$playerId]) {
+                $careerQueryStartMsByPlayer[$playerId] = $timestampMs
             }
         }
     }
 
-    $careerRowsResult = Get-OwReportInfluxBulkCareerRows -Client $client -Players $players -SeasonStartMsByPlayer $seasonStartMsByPlayer -Gamemode (Get-OwReportObjectValue -Object $Config -Path @('provider', 'career_gamemode') -Default 'competitive')
+    foreach ($playerId in @($rankQueryStartMsByPlayer.Keys)) {
+        if (-not $careerQueryStartMsByPlayer.ContainsKey($playerId)) {
+            $careerQueryStartMsByPlayer[$playerId] = $rankQueryStartMsByPlayer[$playerId]
+        }
+    }
+
+    $careerRowsResult = Get-OwReportInfluxBulkCareerRows -Client $client -Players $players -QueryStartMsByPlayer $careerQueryStartMsByPlayer -Gamemode (Get-OwReportObjectValue -Object $Config -Path @('provider', 'career_gamemode') -Default 'competitive')
     $careerRowsByMeasurementByPlayer = @{}
     foreach ($measurement in (Get-OwReportInfluxCareerMeasurementFieldMap).Keys) {
         $careerRowsByMeasurementByPlayer[$measurement] = @{}
@@ -981,7 +1149,7 @@ function Get-OwReportInfluxDataset {
     foreach ($measurement in $careerRowsByMeasurementByPlayer.Keys) {
         foreach ($row in @(Get-OwReportObjectValue -Object $careerRowsResult -Path @('rows_by_measurement', $measurement) -Default @())) {
             $playerId = Get-OwReportObjectValue -Object $row -Path @('player')
-            if ([string]::IsNullOrWhiteSpace($playerId) -or -not $seasonStartMsByPlayer.ContainsKey($playerId)) {
+            if ([string]::IsNullOrWhiteSpace($playerId) -or -not $careerQueryStartMsByPlayer.ContainsKey($playerId)) {
                 continue
             }
 
@@ -991,7 +1159,7 @@ function Get-OwReportInfluxDataset {
             }
 
             $timestampMs = [DateTimeOffset]::Parse($timestampText).ToUnixTimeMilliseconds()
-            if ($timestampMs -lt $seasonStartMsByPlayer[$playerId]) {
+            if ($timestampMs -lt $careerQueryStartMsByPlayer[$playerId]) {
                 continue
             }
 
@@ -1045,6 +1213,10 @@ function Get-OwReportInfluxDataset {
             -FailedMeasurements @($failedMeasurements)
 
         if (-not $result.success) {
+            if ($existingLatestSnapshotByPlayer.ContainsKey($player.player_id)) {
+                continue
+            }
+
             $failedPlayers += [ordered]@{
                 display_name = $player.display_name
                 player_id = $player.player_id
@@ -1063,9 +1235,31 @@ function Get-OwReportInfluxDataset {
                 }
             })
         }
+
+        $newSnapshots += @($result.snapshots)
     }
 
+    $allSnapshots = Merge-OwReportInfluxSnapshots -ExistingSnapshots $existingSnapshots -NewSnapshots $newSnapshots
     $runLookup = @{}
+    foreach ($existingRun in @($existingRunRecords)) {
+        $runId = Get-OwReportObjectValue -Object $existingRun -Path @('run_id')
+        if (-not [string]::IsNullOrWhiteSpace($runId)) {
+            $runLookup[$runId] = [ordered]@{
+                run_id = $runId
+                timestamp = Get-OwReportObjectValue -Object $existingRun -Path @('timestamp')
+                started_at = Get-OwReportObjectValue -Object $existingRun -Path @('started_at') -Default (Get-OwReportObjectValue -Object $existingRun -Path @('timestamp'))
+                completed_at = Get-OwReportObjectValue -Object $existingRun -Path @('completed_at') -Default (Get-OwReportObjectValue -Object $existingRun -Path @('timestamp'))
+                notes = Get-OwReportObjectValue -Object $existingRun -Path @('notes') -Default ''
+                wide_match_context = Get-OwReportObjectValue -Object $existingRun -Path @('wide_match_context') -Default 'mixed'
+                team_name = Get-OwReportObjectValue -Object $existingRun -Path @('team_name') -Default $Config.team_name
+                provider = Get-OwReportObjectValue -Object $existingRun -Path @('provider') -Default 'influxdb'
+                successful_players = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $existingRun -Path @('successful_players') -Default 0) -Default 0
+                failed_players = @((Get-OwReportObjectValue -Object $existingRun -Path @('failed_players') -Default @()))
+                warnings = @((Get-OwReportObjectValue -Object $existingRun -Path @('warnings') -Default @()))
+            }
+        }
+    }
+
     foreach ($snapshot in @($allSnapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })) {
         if (-not $runLookup.ContainsKey($snapshot.run_id)) {
             $runLookup[$snapshot.run_id] = [ordered]@{
@@ -1101,7 +1295,11 @@ function Get-OwReportInfluxDataset {
         $runLookup[$runId].warnings = @($runSnapshots | ForEach-Object { $_.warnings } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
     }
 
-    $runRecords = @($runLookup.Values | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+    $runRecords = Merge-OwReportInfluxRunRecords -ExistingRunRecords @() -NewRunRecords @($runLookup.Values | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+
+    if ($newSnapshots.Count -eq 0) {
+        Write-OwReportLog -RunContext $RunContext -Message 'No newer database snapshots were found. Reusing the published snapshot state.'
+    }
 
     return [ordered]@{
         hero_catalog = $heroCatalog

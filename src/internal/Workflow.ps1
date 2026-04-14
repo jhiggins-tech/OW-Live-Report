@@ -18,14 +18,22 @@ function Invoke-OwReportRun {
     $providerName = (Get-OwReportObjectValue -Object $config -Path @('provider', 'name') -Default 'overfast').ToString().Trim().ToLowerInvariant()
 
     if ($providerName -eq 'influxdb') {
-        $dataset = Get-OwReportInfluxDataset -Config $config -RunContext $runContext
+        $publishedState = Read-OwReportInfluxPublishedState
+        $dataset = Get-OwReportInfluxDataset -Config $config -RunContext $runContext -PublishedState $publishedState
         $siteModel = Get-OwReportTeamAnalytics `
             -Config $config `
             -RunContext $runContext `
             -HeroCatalog $dataset.hero_catalog `
             -Snapshots $dataset.snapshots `
             -RunRecords $dataset.run_records
-        $published = Publish-OwReportSite -Config $config -SiteModel $siteModel -RunContext $runContext
+        $published = Publish-OwReportSite `
+            -Config $config `
+            -SiteModel $siteModel `
+            -RunContext $runContext `
+            -PublishedState ([ordered]@{
+                snapshots = @($dataset.snapshots)
+                run_records = @($dataset.run_records)
+            })
         $reportIndex = Get-OwReportObjectValue -Object $published -Path @('docs_index') -Default $published.latest_index
         Write-OwReportLog -RunContext $runContext -Message ("Finished run {0}. Latest report: {1}" -f $runContext.run_id, $reportIndex)
 
