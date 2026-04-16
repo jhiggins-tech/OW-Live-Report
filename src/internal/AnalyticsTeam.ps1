@@ -1129,6 +1129,8 @@ function Get-OwReportTeamAnalytics {
     )
 
     $providerName = Get-OwReportObjectValue -Object $Config -Path @('provider', 'name') -Default 'overfast'
+    $providerQueryUrl = Get-OwReportObjectValue -Object $Config -Path @('provider', 'query_url') -Default ''
+    $browserRefreshEnabled = ($providerName -eq 'influxdb') -and -not [string]::IsNullOrWhiteSpace($providerQueryUrl)
     $livePlayers = @(
         foreach ($player in @($Config.players)) {
             [ordered]@{
@@ -1163,14 +1165,14 @@ function Get-OwReportTeamAnalytics {
             stat_scope = 'competitive-only'
             live_mode = $false
             source_mode = $(if ($providerName -eq 'influxdb') { 'embedded-fallback' } else { 'embedded-snapshot' })
-            live_refresh_message = $(if ($providerName -eq 'influxdb') { 'Showing the embedded snapshot. Published sites can also read a same-origin snapshot file without changing the page code.' } else { $null })
+            live_refresh_message = $(if ($providerName -eq 'influxdb') { 'Showing the embedded fallback while the page connects to the live stats server.' } else { $null })
             live_source = [ordered]@{
                 enabled = ($providerName -eq 'influxdb')
                 provider = $providerName
-                query_url = Get-OwReportObjectValue -Object $Config -Path @('provider', 'query_url')
+                query_url = $providerQueryUrl
                 database = Get-OwReportObjectValue -Object $Config -Path @('provider', 'database')
                 request_delay_ms = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $Config -Path @('provider', 'request_delay_ms') -Default 125) -Default 125
-                browser_refresh_enabled = $false
+                browser_refresh_enabled = $browserRefreshEnabled
                 ui = [ordered]@{
                     top_hero_count = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $Config -Path @('ui', 'top_hero_count') -Default 6) -Default 6
                 }

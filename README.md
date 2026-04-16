@@ -1,52 +1,54 @@
 # Overwatch Weasel Report
 
-This project builds a polished static Overwatch team report from competitive snapshot data.
+This project publishes a static analytics site shell that now reads **live Overwatch stats from the hosted HTTPS InfluxDB endpoint in the browser**.
 
-Right now the workflow is:
+Current model:
 
-1. query the hosted stats database
-2. build a static site snapshot locally
-3. write the publishable site into `docs/`
-4. push the updated `docs/` folder to GitHub
+1. GitHub Pages serves the site from `docs/`
+2. the browser calls the live HTTPS stats endpoint directly
+3. the dashboard rebuilds itself from that live data
+4. the embedded/published snapshot is now only a fallback if the live server is unavailable
 
-The important change is this:
+That means once the updated site code is published, normal stat changes should show up automatically without running a local snapshot refresh.
 
-- GitHub Pages is now meant to serve a static snapshot
-- the page does **not** rely on live browser access to the database
-- the published site reads from a fixed snapshot file at `docs/data/site-model.json`
+## Canonical Site Copy
 
-That means you can refresh the published site by uploading a new snapshot file set, without changing the website code.
-
-## Canonical Preview
-
-Use this as the main local preview:
+Use this as the publishable site copy:
 
 - `docs/index.html`
 
-That is the version we treat as the publishable copy.
+That is the version GitHub Pages should serve.
 
-`output/latest/` still exists as a generated build artifact, but `docs/` is the place to open, inspect, and publish.
+## Data Source Status
 
-## What The Site Uses
+The site shows a source badge so you can tell what you are looking at:
 
-The report currently uses:
-
-- competitive-only rank history
-- competitive-only hero usage and performance
-- profile metadata from `player_summary`
-- a static snapshot file for GitHub Pages publishing
-
-The site currently shows a source badge so you can tell whether you are looking at:
-
+- `Live Server`
 - `Published Snapshot`
 - `Fallback Snapshot`
+- `Static Snapshot`
+
+Expected normal state after this HTTPS switch:
+
 - `Live Server`
 
-For GitHub Pages, the normal expected state is `Published Snapshot`.
+If the hosted DB is down or unreachable, the page can still fall back to the last embedded/published snapshot instead of breaking completely.
+
+## Live Data Architecture
+
+The published site now prefers:
+
+- `https://owstats.jhiggins.tech/query`
+
+with:
+
+- database: `ow_stats_telegraf`
+
+The browser fetch path is enabled only because the endpoint is now HTTPS and returns browser-safe CORS headers.
 
 ## Simple Roster File
 
-You can still manage the roster in:
+Tracked players still live in:
 
 - `config/tracked-battletags.txt`
 
@@ -77,184 +79,159 @@ Main config file:
 Things you may want to edit:
 
 - `team_name`
-- database connection settings if the host changes
+- live database URL if the host changes
 - player overrides such as default locked roles
 
-## Quick Start
+## What Changes Need A Rebuild
 
-### 1. Edit the roster
+### Data-only changes
+
+You do **not** need to rerun the local snapshot tool just to get newer stats on the published site anymore.
+
+If the live DB updates, the published page should pull that data automatically on load.
+
+### Code / layout / roster changes
+
+You **do** still need to rebuild or republish when you change:
+
+- HTML / JS / CSS
+- tracked players
+- config
+- page layout or analytics logic
+
+Because GitHub Pages still needs the updated site files under `docs/`.
+
+## Local Preview
+
+Open:
+
+- `docs/index.html`
+
+Important note:
+
+- if you open the page directly from disk with `file:///...`, some browsers handle cross-origin fetch differently
+- the site will still try the live HTTPS source first
+- if that fails, it falls back to the embedded snapshot
+
+The most accurate real-world test is the published GitHub Pages site, because that is how the browser will run in production.
+
+## Commands
+
+### Edit roster
 
 ```powershell
 notepad .\config\tracked-battletags.txt
 ```
 
-### 2. Optional: edit the team name
+### Edit config
 
 ```powershell
 notepad .\config\team.sample.json
 ```
 
-### 3. Rebuild the snapshot site
+### Rebuild local docs after code/config changes
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
 ```
 
-Or use the short helper:
+Short helper:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\refresh-site-data.ps1
 ```
 
-### 4. Open the publishable preview
+### Open the local preview
 
 ```powershell
 start .\docs\index.html
 ```
 
-## What `run-report.ps1` Does Now
+## What `run-report.ps1` Still Does
 
-When you run:
+Even though the published site is now live-data-first, the local rebuild still has value.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
-```
+It:
 
-it now:
+1. reads config and roster
+2. generates the site shell
+3. updates `docs/`
+4. bakes in a fallback snapshot in case the live DB is unavailable
 
-1. reads your roster/config
-2. queries the hosted database
-3. builds the report site
-4. writes:
-   - `output/runs/<run-id>/`
-   - `output/latest/`
-   - `docs/`
-5. writes the publishable snapshot file:
-   - `docs/data/site-model.json`
+So the command is still useful for:
 
-So after a successful run, `docs/` is already ready to commit and publish.
+- UI changes
+- new players
+- config changes
+- fallback refreshes
 
-## GitHub Pages Snapshot Flow
+It is no longer the normal mechanism for daily stat updates on the published site.
 
-This is the recommended publishing workflow.
+## GitHub Pages Flow
 
-### Normal refresh
+Recommended setup:
 
-1. Run the report locally.
-2. Check `docs/index.html`.
-3. Commit the updated `docs/` folder.
-4. Push to GitHub.
+1. push the repo
+2. GitHub Pages serves from `main` -> `/docs`
+3. the published page loads live data from the HTTPS stats endpoint
 
-That updates the published site.
+Normal future workflow:
 
-### Important snapshot file
+1. make code/config changes locally
+2. rebuild `docs/`
+3. inspect `docs/index.html`
+4. push repo changes
 
-The key data file is:
+You do not need to republish just because the underlying stats changed.
 
-- `docs/data/site-model.json`
+## Fallback Snapshot Files
 
-When the site is served over HTTP(S), the page loads this file and rebuilds the dashboard from it.
-
-That means:
-
-- the published page can accept refreshed data without changing the front-end code
-- the page shell can stay the same while the snapshot data changes
-
-### If only data changed
-
-If the site structure is unchanged and you are only refreshing stats, the most important file is:
+These still exist:
 
 - `docs/data/site-model.json`
+- `docs/data/published-state.json`
 
-In practice, it is usually easiest to commit the whole refreshed `docs/` folder anyway.
+They are now fallback resilience files, not the primary live data source.
 
-### If roster or page structure changed
-
-If you added players, changed slugs, or changed the UI, upload the full refreshed `docs/` folder, not just the JSON snapshot file.
-
-## Important Browser Note
-
-There are two different behaviors depending on where the site is opened.
-
-### Local file preview
-
-If you open `docs/index.html` directly from disk with `file:///...`, browsers often block JSON fetches from sibling files.
-
-So in local file preview:
-
-- the page can fall back to the embedded snapshot baked into the HTML
-
-### GitHub Pages / served site
-
-If the site is served over HTTP(S), it can load:
-
-- `docs/data/site-model.json`
-
-That is the main publish path.
-
-## Why We Are Not Using Live Browser Refresh Right Now
-
-The hosted database is currently only available over `http`, not `https`.
-
-GitHub Pages is served over `https`, so direct browser calls to the database would be blocked as mixed content.
-
-Because of that, the current stable approach is:
-
-- database query at build time
-- static snapshot at publish time
-- published site reads same-origin snapshot JSON
-
-This is the cleanest safe path until HTTPS is available on the database host.
+The page should prefer the live server first and only use these if the live fetch fails.
 
 ## Long-Term Tracking
 
-Long-term history currently lives in the hosted database.
+Long-term history now lives in the hosted database.
 
-Your local run does not need to maintain the full stat history itself. Instead it:
+The site reads that history live when it loads, then computes:
 
-- reads the current historical data from the database
-- builds a new snapshot site from that history
-- publishes the latest static view into `docs/`
+- team overview metrics
+- player drill-downs
+- trend charts
+- hero recommendations
+- optimizer outputs
 
-So the published report is a snapshot of the database history at the time you ran the command.
+So the published site should reflect the current database state automatically.
 
 ## Settings Page
 
-The settings page is here:
+Settings page:
 
 - `docs/settings.html`
 
-It lets you:
+It still supports browser-local hide/show behavior for runs/snapshots already present in the loaded model.
 
-- hide snapshots from the browser view
-- restore hidden snapshots
-
-In database-backed mode, this is currently hide-only in the UI. It does not delete rows from the hosted database.
-
-## Hero Filters And Roster Filters
-
-The report currently supports:
-
-- player visibility filters on the overview
-- per-player hero filters on player pages
-- role quick-filter buttons in hero filters
-- browser-saved optimizer role locks
-
-These are view-layer controls. They change what the report shows, but they do not edit the hosted source database.
+In live DB mode, those controls are view-only and do not delete anything from the hosted source.
 
 ## Team Optimizer
 
-The `Best Team Combination` section:
+The `Best Team Combination` section still:
 
 - uses competitive-only role data
 - builds a `1 tank / 2 DPS / 2 support` lineup
 - prefers `Narrow` lineups when possible
-- supports browser-side manual role locks
+- supports browser-side role locks
 - supports `Not Playing`
 
 ## Testing
 
-Run the test suite with:
+Run tests with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
@@ -262,26 +239,27 @@ powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 
 ## Helpful Files
 
-- `config/tracked-battletags.txt`: simple roster list
-- `config/team.sample.json`: project config
-- `run-report.ps1`: main rebuild command
-- `publish-github-pages.ps1`: optional manual sync from `output/latest` to `docs`
-- `docs/index.html`: canonical preview and publish entrypoint
-- `docs/data/site-model.json`: published snapshot data file
-- `docs/settings.html`: snapshot visibility settings page
-- `output/runs/`: archived generated builds
-- `output/latest/`: latest generated build copy
-- `logs/`: run logs
+- `config/tracked-battletags.txt`: roster list
+- `config/team.sample.json`: config
+- `web/app.js`: browser live-data logic
+- `run-report.ps1`: rebuild the site shell and fallback snapshot
+- `refresh-site-data.ps1`: shorthand rebuild helper
+- `docs/index.html`: publishable site entrypoint
+- `docs/settings.html`: settings page
+- `docs/data/site-model.json`: fallback snapshot data
+- `docs/data/published-state.json`: fallback incremental state
 
-## Recommended Everyday Workflow
+## Everyday Reality Now
 
-Use this pattern:
+For normal stat updates:
 
-1. edit roster if needed
-2. run `powershell -ExecutionPolicy Bypass -File .\refresh-site-data.ps1`
-3. open `docs/index.html`
-4. sanity-check the site
-5. commit the updated `docs/` folder
-6. push to GitHub
+1. the database updates
+2. the published page reads that live data
+3. the site updates on load
 
-That keeps the published page updated with the newest snapshot without needing any live browser database connection.
+For code/config updates:
+
+1. change code locally
+2. rebuild `docs/`
+3. inspect locally
+4. push to GitHub

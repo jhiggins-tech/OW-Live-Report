@@ -8,7 +8,7 @@
   "cache_dir": "./cache",
   "provider": {
     "name": "influxdb",
-    "query_url": "http://134.199.184.203:8183/query",
+    "query_url": "https://owstats.jhiggins.tech/query",
     "database": "ow_stats_telegraf",
     "request_delay_ms": 150,
     "summary_gamemode": "competitive",

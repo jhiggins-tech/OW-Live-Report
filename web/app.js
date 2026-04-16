@@ -3708,7 +3708,7 @@
     const pagePayload = buildPagePayloadFromSiteModel(siteModel, pageData);
     return withSnapshotStatusMessage(
       pagePayload,
-      `Published snapshot loaded ${new Date().toLocaleString()}. Uploading a new site-model.json file will refresh this site without changing the page code.`,
+      `Live server unavailable, so the page fell back to the last published snapshot at ${new Date().toLocaleString()}.`,
       "published-snapshot"
     );
   };
@@ -3735,23 +3735,25 @@
     renderCurrentPage(pageData.payload);
 
     try {
+      if (pageData.live?.enabled && pageData.live?.browser_refresh_enabled) {
+        try {
+          const livePayload = await resolveLivePagePayload();
+          if (livePayload) {
+            renderCurrentPage(withLiveStatusMessage(livePayload, `Live server refreshed ${new Date().toLocaleString()}.`, true));
+            return;
+          }
+        } catch (liveError) {
+          console.warn("Live refresh failed, trying the published snapshot fallback.", liveError);
+        }
+      }
+
       const publishedPayload = await resolvePublishedSnapshotPayload();
       if (publishedPayload) {
         renderCurrentPage(publishedPayload);
-        return;
-      }
-
-      if (!pageData.live?.enabled || !pageData.live?.browser_refresh_enabled) {
-        return;
-      }
-
-      const livePayload = await resolveLivePagePayload();
-      if (livePayload) {
-        renderCurrentPage(livePayload);
       }
     } catch (error) {
-      console.warn("Snapshot refresh failed, keeping embedded fallback payload.", error);
-      renderCurrentPage(withSnapshotStatusMessage(pageData.payload, `Snapshot refresh failed: ${error?.message || "Unknown error"}`, "embedded-fallback"));
+      console.warn("Live and snapshot refresh both failed, keeping the embedded fallback payload.", error);
+      renderCurrentPage(withSnapshotStatusMessage(pageData.payload, `Live refresh failed: ${error?.message || "Unknown error"}`, "embedded-fallback"));
     }
   };
 

@@ -7,7 +7,7 @@ function New-OwReportInfluxClient {
 
     $queryUrl = Get-OwReportObjectValue -Object $Config -Path @('provider', 'query_url') -Default ''
     if ([string]::IsNullOrWhiteSpace($queryUrl)) {
-        $queryUrl = 'http://134.199.184.203:8183/query'
+        $queryUrl = 'https://owstats.jhiggins.tech/query'
     }
 
     return [ordered]@{
