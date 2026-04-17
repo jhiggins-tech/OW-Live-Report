@@ -1,3 +1,22 @@
+function Get-OwReportBootstrapJson {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Page,
+        [hashtable]$Live,
+        [hashtable]$Context,
+        [hashtable]$Fallback
+    )
+
+    return ConvertTo-OwReportHtmlSafeJson -Value ([ordered]@{
+        page = $Page
+        payload = $null
+        live = $Live
+        context = $(if ($Context) { $Context } else { [ordered]@{} })
+        fallback = $(if ($Fallback) { $Fallback } else { [ordered]@{} })
+    })
+}
+
 function Get-OwReportOverviewHtml {
     [CmdletBinding()]
     param(
@@ -5,10 +24,10 @@ function Get-OwReportOverviewHtml {
         [hashtable]$SiteModel
     )
 
-    $json = ConvertTo-OwReportHtmlSafeJson -Value ([ordered]@{
-        page = 'overview'
-        payload = $SiteModel
-        live = (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source'))
+    $json = Get-OwReportBootstrapJson -Page 'overview' -Live (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source')) -Fallback ([ordered]@{
+        team_name = $SiteModel.meta.team_name
+        site_subtitle = $SiteModel.meta.site_subtitle
+        generated_at = $SiteModel.meta.generated_at
     })
     $title = '{0} | Overwatch Team Report' -f $SiteModel.meta.team_name
 
@@ -117,16 +136,13 @@ function Get-OwReportPlayerHtml {
         [hashtable]$Player
     )
 
-    $json = ConvertTo-OwReportHtmlSafeJson -Value ([ordered]@{
-        page = 'player'
-        payload = [ordered]@{
-            meta = $SiteModel.meta
-            player = $Player
-        }
-        live = (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source'))
-        context = [ordered]@{
-            player_slug = $Player.slug
-        }
+    $json = Get-OwReportBootstrapJson -Page 'player' -Live (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source')) -Context ([ordered]@{
+        player_slug = $Player.slug
+    }) -Fallback ([ordered]@{
+        team_name = $SiteModel.meta.team_name
+        player_display_name = $Player.display_name
+        player_slug = $Player.slug
+        generated_at = $SiteModel.meta.generated_at
     })
     $title = '{0} | {1}' -f $Player.display_name, $SiteModel.meta.team_name
 
@@ -256,10 +272,9 @@ function Get-OwReportSettingsHtml {
         [hashtable]$SiteModel
     )
 
-    $json = ConvertTo-OwReportHtmlSafeJson -Value ([ordered]@{
-        page = 'settings'
-        payload = $SiteModel
-        live = (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source'))
+    $json = Get-OwReportBootstrapJson -Page 'settings' -Live (Get-OwReportObjectValue -Object $SiteModel -Path @('meta', 'live_source')) -Fallback ([ordered]@{
+        team_name = $SiteModel.meta.team_name
+        generated_at = $SiteModel.meta.generated_at
     })
     $title = '{0} | Settings' -f $SiteModel.meta.team_name
     $isHideOnly = (Get-OwReportObjectValue -Object $SiteModel -Path @('settings', 'removal_mode') -Default 'browser-local') -eq 'hide-only'
@@ -358,6 +373,9 @@ function Publish-OwReportSite {
     $runDataDir = Ensure-OwReportDirectory -Path (Join-Path $runOutputDir 'data')
     $latestDataDir = Ensure-OwReportDirectory -Path (Join-Path $latestOutputDir 'data')
     $docsDataDir = Ensure-OwReportDirectory -Path (Join-Path $docsOutputDir 'data')
+    $runDataPlayersDir = Ensure-OwReportDirectory -Path (Join-Path $runDataDir 'players')
+    $latestDataPlayersDir = Ensure-OwReportDirectory -Path (Join-Path $latestDataDir 'players')
+    $docsDataPlayersDir = Ensure-OwReportDirectory -Path (Join-Path $docsDataDir 'players')
 
     Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\styles.css') -Destination (Join-Path $runAssetsDir 'styles.css') -Force
     Copy-Item -LiteralPath (Join-Path $script:OwReportProjectRoot 'web\app.js') -Destination (Join-Path $runAssetsDir 'app.js') -Force
@@ -378,6 +396,16 @@ function Publish-OwReportSite {
     Write-OwReportJsonFile -Path (Join-Path $runDataDir 'site-model.json') -Value $SiteModel -Compress
     Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'site-model.json') -Value $SiteModel -Compress
     Write-OwReportJsonFile -Path (Join-Path $docsDataDir 'site-model.json') -Value $SiteModel -Compress
+    Write-OwReportJsonFile -Path (Join-Path $runDataDir 'overview.json') -Value $SiteModel -Compress
+    Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'overview.json') -Value $SiteModel -Compress
+    Write-OwReportJsonFile -Path (Join-Path $docsDataDir 'overview.json') -Value $SiteModel -Compress
+    $settingsPayload = [ordered]@{
+        meta = $SiteModel.meta
+        settings = $SiteModel.settings
+    }
+    Write-OwReportJsonFile -Path (Join-Path $runDataDir 'settings.json') -Value $settingsPayload -Compress
+    Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'settings.json') -Value $settingsPayload -Compress
+    Write-OwReportJsonFile -Path (Join-Path $docsDataDir 'settings.json') -Value $settingsPayload -Compress
     if ($PSBoundParameters.ContainsKey('PublishedState') -and $null -ne $PublishedState) {
         Write-OwReportJsonFile -Path (Join-Path $runDataDir 'published-state.json') -Value $PublishedState -Compress
         Write-OwReportJsonFile -Path (Join-Path $latestDataDir 'published-state.json') -Value $PublishedState -Compress
@@ -389,6 +417,13 @@ function Publish-OwReportSite {
         Write-OwReportTextFile -Path (Join-Path $playersDir ('{0}.html' -f $player.slug)) -Content $playerHtml
         Write-OwReportTextFile -Path (Join-Path $latestPlayersDir ('{0}.html' -f $player.slug)) -Content $playerHtml
         Write-OwReportTextFile -Path (Join-Path $docsPlayersDir ('{0}.html' -f $player.slug)) -Content $playerHtml
+        $playerPayload = [ordered]@{
+            meta = $SiteModel.meta
+            player = $player
+        }
+        Write-OwReportJsonFile -Path (Join-Path $runDataPlayersDir ('{0}.json' -f $player.slug)) -Value $playerPayload -Compress
+        Write-OwReportJsonFile -Path (Join-Path $latestDataPlayersDir ('{0}.json' -f $player.slug)) -Value $playerPayload -Compress
+        Write-OwReportJsonFile -Path (Join-Path $docsDataPlayersDir ('{0}.json' -f $player.slug)) -Value $playerPayload -Compress
     }
 
     return [ordered]@{

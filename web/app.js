@@ -1798,8 +1798,9 @@
 
     const snapshots = rawSnapshots.map((snapshot) => {
       const visibleHeroes = [...(snapshot.heroes || [])].filter((hero) => !hiddenHeroSet.has(hero.hero_key));
-      const metrics = aggregateMetricsFromHeroes(visibleHeroes);
-      const roles = aggregateRoleMetricsFromHeroes(visibleHeroes);
+      const hasHeroDetails = (snapshot.heroes || []).length > 0;
+      const metrics = hasHeroDetails ? aggregateMetricsFromHeroes(visibleHeroes) : snapshot.metrics || aggregateMetricsFromHeroes(visibleHeroes);
+      const roles = hasHeroDetails ? aggregateRoleMetricsFromHeroes(visibleHeroes) : snapshot.roles || aggregateRoleMetricsFromHeroes(visibleHeroes);
       return {
         ...snapshot,
         heroes: visibleHeroes,
@@ -2943,29 +2944,29 @@
   };
   const getLiveHeroName = (heroKey) => liveHeroCatalog[heroKey]?.name || prettyHeroName(heroKey);
   const getLiveHeroRole = (heroKey) => liveHeroCatalog[heroKey]?.role || "flex";
-  const getLiveCacheKey = (liveConfig) =>
-    `owr-live-site:${liveConfig?.database || "db"}:${liveConfig?.query_url || "query"}:${(liveConfig?.players || [])
+  const getLiveCacheKey = (liveConfig, cacheScope = "overview") =>
+    `owr-live-site:${cacheScope}:${liveConfig?.database || "db"}:${liveConfig?.query_url || "query"}:${(liveConfig?.players || [])
       .map((player) => player.player_id || player.slug || player.display_name)
       .join("|")}`;
-  const readLiveCache = (liveConfig) => {
+  const readLiveCache = (liveConfig, cacheScope = "overview") => {
     try {
-      const raw = sessionStorage.getItem(getLiveCacheKey(liveConfig));
+      const raw = sessionStorage.getItem(getLiveCacheKey(liveConfig, cacheScope));
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (!parsed?.stored_at || !parsed?.site_model) return null;
+      if (!parsed?.stored_at || !parsed?.payload) return null;
       if (Date.now() - Number(parsed.stored_at) > LIVE_CACHE_TTL_MS) return null;
-      return parsed.site_model;
+      return parsed.payload;
     } catch (error) {
       return null;
     }
   };
-  const writeLiveCache = (liveConfig, siteModel) => {
+  const writeLiveCache = (liveConfig, cacheScope, payload) => {
     try {
       sessionStorage.setItem(
-        getLiveCacheKey(liveConfig),
+        getLiveCacheKey(liveConfig, cacheScope),
         JSON.stringify({
           stored_at: Date.now(),
-          site_model: siteModel,
+          payload,
         })
       );
     } catch (error) {
@@ -2999,7 +3000,28 @@
     });
     return rows;
   };
-  const queryLiveInflux = async (client, query) => {
+  const liveLogPrefix = "[OWR live]";
+  const summarizeLiveQuery = (query) =>
+    String(query || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+  const logLiveEvent = (message, detail) => {
+    if (detail !== undefined) {
+      console.log(`${liveLogPrefix} ${message}`, detail);
+      return;
+    }
+    console.log(`${liveLogPrefix} ${message}`);
+  };
+  const logLiveWarn = (message, detail) => {
+    if (detail !== undefined) {
+      console.warn(`${liveLogPrefix} ${message}`, detail);
+      return;
+    }
+    console.warn(`${liveLogPrefix} ${message}`);
+  };
+  const queryLiveInflux = async (client, query, options = {}) => {
+    const label = options.label || "Influx query";
     const elapsed = Date.now() - numericValue(client.last_request_at, 0);
     const waitMs = Math.max(0, numericValue(client.request_delay_ms, 125) - elapsed);
     if (waitMs > 0) {
@@ -3007,15 +3029,19 @@
     }
     client.last_request_at = Date.now();
     const url = `${client.query_url}?db=${encodeURIComponent(client.database)}&q=${encodeURIComponent(query)}`;
+    const startedAt = performance.now();
+    logLiveEvent(`${label} started`, summarizeLiveQuery(query));
     let response;
     try {
       response = await fetch(url, { method: "GET" });
     } catch (error) {
+      logLiveWarn(`${label} failed after ${(performance.now() - startedAt).toFixed(0)}ms`, error?.message || "Network request failed.");
       return { ok: false, rows: [], error: error?.message || "Network request failed." };
     }
 
     const text = await response.text();
     if (!response.ok) {
+      logLiveWarn(`${label} failed after ${(performance.now() - startedAt).toFixed(0)}ms`, `HTTP ${response.status}`);
       return {
         ok: false,
         rows: [],
@@ -3027,13 +3053,17 @@
     try {
       payload = JSON.parse(text);
     } catch (error) {
+      logLiveWarn(`${label} returned non-JSON after ${(performance.now() - startedAt).toFixed(0)}ms`);
       return { ok: false, rows: [], error: "Database returned non-JSON data." };
     }
+
+    const rows = convertInfluxResponseRows(payload);
+    logLiveEvent(`${label} completed in ${(performance.now() - startedAt).toFixed(0)}ms with ${rows.length} row(s)`);
 
     return {
       ok: true,
       payload,
-      rows: convertInfluxResponseRows(payload),
+      rows,
       error: null,
     };
   };
@@ -3251,6 +3281,20 @@
     if (assessment.label === "narrow") return "mostly_narrow";
     return "mixed";
   };
+  const getLiveConfiguredPlayers = (liveConfig, options = {}) => {
+    const requestedSlugs = new Set((options.playerSlugs || []).filter(Boolean));
+    return [...(liveConfig?.players || [])]
+      .map((player) => ({
+        battle_tag: player.battle_tag || "",
+        player_id: player.player_id || player.battle_tag || "",
+        slug: player.slug || slugifyText(player.display_name || player.player_id || player.battle_tag),
+        display_name: player.display_name || player.battle_tag || player.player_id,
+        notes: player.notes || "",
+        locked_role: normalizeOptimizerLock(player.locked_role || ""),
+      }))
+      .filter((player) => player.player_id)
+      .filter((player) => !requestedSlugs.size || requestedSlugs.has(player.slug));
+  };
   const buildLivePlayerRecord = (playerConfig, snapshots, fallbackPayload) => {
     const orderedSnapshots = [...(snapshots || [])].sort((left, right) => new Date(left.captured_at) - new Date(right.captured_at));
     const latestSnapshot = orderedSnapshots[orderedSnapshots.length - 1] || null;
@@ -3313,17 +3357,8 @@
       top_heroes: [...(latestSnapshot.heroes || [])].slice(0, topHeroCount),
     };
   };
-  const buildLiveSiteModel = async (liveConfig, fallbackPayload) => {
-    const playerConfigs = [...(liveConfig?.players || [])]
-      .map((player) => ({
-        battle_tag: player.battle_tag || "",
-        player_id: player.player_id || player.battle_tag || "",
-        slug: player.slug || slugifyText(player.display_name || player.player_id || player.battle_tag),
-        display_name: player.display_name || player.battle_tag || player.player_id,
-        notes: player.notes || "",
-        locked_role: normalizeOptimizerLock(player.locked_role || ""),
-      }))
-      .filter((player) => player.player_id);
+  const buildLiveSiteModel = async (liveConfig, fallbackPayload, options = {}) => {
+    const playerConfigs = getLiveConfiguredPlayers(liveConfig, options);
     if (!playerConfigs.length) {
       throw new Error("No tracked players are configured for the live data source.");
     }
@@ -3334,7 +3369,8 @@
 
     const playerSummaryResult = await queryLiveInflux(
       client,
-      `SELECT last("avatar"),last("endorsement_frame"),last("endorsement_level"),last("namecard"),last("title"),last("username") FROM "player_summary" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player"`
+      `SELECT last("avatar"),last("endorsement_frame"),last("endorsement_level"),last("namecard"),last("title"),last("username") FROM "player_summary" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player"`,
+      { label: `Player summary (${playerConfigs.length} player${playerConfigs.length === 1 ? "" : "s"})` }
     );
     if (playerSummaryResult.ok) {
       playerSummaryResult.rows.forEach((row) => {
@@ -3353,7 +3389,8 @@
 
     const rankResult = await queryLiveInflux(
       client,
-      `SELECT "tier","division","season" FROM "competitive_rank" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player","role" ORDER BY time ASC`
+      `SELECT "tier","division","season" FROM "competitive_rank" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player","role" ORDER BY time ASC`,
+      { label: `Rank history (${playerConfigs.length} player${playerConfigs.length === 1 ? "" : "s"})` }
     );
     if (!rankResult.ok) {
       throw new Error(`Rank query failed: ${rankResult.error}`);
@@ -3387,7 +3424,9 @@
       const globalSeasonStartMs = Math.min(...seasonStartValues);
       const measurementPattern = "career_stats_assists|career_stats_average|career_stats_combat|career_stats_game";
       const regexQuery = `SELECT * FROM /^(${measurementPattern})$/ WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' AND time >= ${globalSeasonStartMs}ms ORDER BY time ASC`;
-      const careerResult = await queryLiveInflux(client, regexQuery);
+      const careerResult = await queryLiveInflux(client, regexQuery, {
+        label: `Detailed career history (${playerConfigs.length} player${playerConfigs.length === 1 ? "" : "s"})`,
+      });
       if (careerResult.ok) {
         careerRows = careerResult.rows;
       } else {
@@ -3395,7 +3434,8 @@
         for (const measurement of measurements) {
           const measurementResult = await queryLiveInflux(
             client,
-            `SELECT * FROM "${measurement}" WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' AND time >= ${globalSeasonStartMs}ms ORDER BY time ASC`
+            `SELECT * FROM "${measurement}" WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' AND time >= ${globalSeasonStartMs}ms ORDER BY time ASC`,
+            { label: `${measurement} fallback (${playerConfigs.length} player${playerConfigs.length === 1 ? "" : "s"})` }
           );
           if (measurementResult.ok) {
             careerRows = careerRows.concat(measurementResult.rows);
@@ -3640,6 +3680,383 @@
       },
     };
   };
+  const buildLiveOverviewSiteModel = async (liveConfig, fallbackPayload) => {
+    const playerConfigs = getLiveConfiguredPlayers(liveConfig);
+    if (!playerConfigs.length) {
+      throw new Error("No tracked players are configured for the live data source.");
+    }
+
+    const client = createLiveClient(liveConfig);
+    const playerRegex = playerConfigs.map((player) => escapeInfluxRegex(player.player_id)).join("|");
+    const measurementPattern = "career_stats_assists|career_stats_average|career_stats_combat|career_stats_game";
+    const playerSummaryByPlayer = new Map();
+    const playerSummaryResult = await queryLiveInflux(
+      client,
+      `SELECT last("avatar"),last("endorsement_frame"),last("endorsement_level"),last("namecard"),last("title"),last("username") FROM "player_summary" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player"`,
+      { label: `Player summary (${playerConfigs.length} players)` }
+    );
+    if (playerSummaryResult.ok) {
+      playerSummaryResult.rows.forEach((row) => {
+        if (!row.player) return;
+        playerSummaryByPlayer.set(row.player, {
+          time: row.time,
+          avatar: row.last ?? null,
+          endorsement_frame: row.last_1 ?? null,
+          endorsement_level: row.last_2 ?? 0,
+          namecard: row.last_3 ?? null,
+          title: row.last_4 ?? null,
+          username: row.last_5 ?? null,
+        });
+      });
+    }
+
+    const latestSeasonByPlayer = new Map();
+    const latestSeasonResult = await queryLiveInflux(
+      client,
+      `SELECT last("season") AS "season" FROM "competitive_rank" WHERE "player" =~ /^(${playerRegex})$/ GROUP BY "player"`,
+      { label: `Latest season lookup (${playerConfigs.length} players)` }
+    );
+    if (!latestSeasonResult.ok) {
+      throw new Error(`Latest season query failed: ${latestSeasonResult.error}`);
+    }
+    latestSeasonResult.rows.forEach((row) => {
+      const playerId = row.player;
+      const season = Number(getInfluxFieldValue(row, ["season", "last"]));
+      if (!playerId || !Number.isFinite(season)) return;
+      latestSeasonByPlayer.set(playerId, season);
+    });
+
+    const rankRows = [];
+    const playersBySeason = new Map();
+    playerConfigs.forEach((player) => {
+      const season = latestSeasonByPlayer.get(player.player_id);
+      if (!Number.isFinite(season)) return;
+      if (!playersBySeason.has(season)) {
+        playersBySeason.set(season, []);
+      }
+      playersBySeason.get(season).push(player.player_id);
+    });
+    for (const [season, playerIds] of playersBySeason.entries()) {
+      const seasonRegex = playerIds.map((playerId) => escapeInfluxRegex(playerId)).join("|");
+      const seasonRankResult = await queryLiveInflux(
+        client,
+        `SELECT "tier","division","season" FROM "competitive_rank" WHERE "player" =~ /^(${seasonRegex})$/ AND "season"=${season} GROUP BY "player","role" ORDER BY time ASC`,
+        { label: `Rank history season ${season} (${playerIds.length} players)` }
+      );
+      if (!seasonRankResult.ok) {
+        throw new Error(`Rank query failed for season ${season}: ${seasonRankResult.error}`);
+      }
+      rankRows.push(...seasonRankResult.rows);
+    }
+
+    const seasonStartMsByPlayer = new Map();
+    rankRows.forEach((row) => {
+      const playerId = row.player;
+      const timestampMs = new Date(row.time).getTime();
+      if (!playerId || Number.isNaN(timestampMs)) return;
+      const existing = seasonStartMsByPlayer.get(playerId);
+      if (existing === undefined || timestampMs < existing) {
+        seasonStartMsByPlayer.set(playerId, timestampMs);
+      }
+    });
+
+    const seasonStartValues = [...seasonStartMsByPlayer.values()].filter((value) => Number.isFinite(value));
+    let aggregateRows = [];
+    if (seasonStartValues.length) {
+      const globalSeasonStartMs = Math.min(...seasonStartValues);
+      const aggregateResult = await queryLiveInflux(
+        client,
+        `SELECT * FROM /^(${measurementPattern})$/ WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' AND "hero"='all-heroes' AND time >= ${globalSeasonStartMs}ms ORDER BY time ASC`,
+        { label: `All-heroes history (${playerConfigs.length} players)` }
+      );
+      if (!aggregateResult.ok) {
+        throw new Error(`All-heroes history query failed: ${aggregateResult.error}`);
+      }
+      aggregateRows = aggregateResult.rows;
+    }
+
+    let latestHeroRows = [];
+    const latestHeroesResult = await queryLiveInflux(
+      client,
+      `SELECT last(*) FROM /^(${measurementPattern})$/ WHERE "player" =~ /^(${playerRegex})$/ AND "gamemode"='competitive' GROUP BY "player","hero"`,
+      { label: `Latest hero snapshot (${playerConfigs.length} players)` }
+    );
+    if (latestHeroesResult.ok) {
+      latestHeroRows = latestHeroesResult.rows;
+    }
+
+    const rankRowsByPlayer = new Map();
+    rankRows.forEach((row) => {
+      if (!rankRowsByPlayer.has(row.player)) {
+        rankRowsByPlayer.set(row.player, []);
+      }
+      rankRowsByPlayer.get(row.player).push(row);
+    });
+
+    const aggregateRowsByPlayer = new Map();
+    aggregateRows.forEach((row) => {
+      const playerId = row.player;
+      const threshold = seasonStartMsByPlayer.get(playerId);
+      const timestampMs = new Date(row.time).getTime();
+      if (!playerId || !Number.isFinite(threshold) || Number.isNaN(timestampMs) || timestampMs < threshold) return;
+      if (!aggregateRowsByPlayer.has(playerId)) {
+        aggregateRowsByPlayer.set(playerId, []);
+      }
+      aggregateRowsByPlayer.get(playerId).push(row);
+    });
+
+    const latestHeroCategoriesByPlayer = new Map();
+    latestHeroRows.forEach((row) => {
+      const playerId = row.player;
+      const heroKey = normalizeInfluxHeroKey(row.hero);
+      if (!playerId || !heroKey || heroKey === "all-heroes") return;
+      if (!latestHeroCategoriesByPlayer.has(playerId)) {
+        latestHeroCategoriesByPlayer.set(playerId, {});
+      }
+      const playerHeroes = latestHeroCategoriesByPlayer.get(playerId);
+      if (!playerHeroes[heroKey]) {
+        playerHeroes[heroKey] = {};
+      }
+      const categoryKey = String(row.measurement || "").replace(/^career_stats_/, "");
+      playerHeroes[heroKey][categoryKey] = convertInfluxCategoryObject(row);
+    });
+
+    const allSnapshots = [];
+    const players = [];
+    const failedPlayers = [];
+
+    playerConfigs.forEach((playerConfig) => {
+      const snapshotLookup = new Map();
+      const ensureSnapshotState = (timestamp) => {
+        if (!snapshotLookup.has(timestamp)) {
+          snapshotLookup.set(timestamp, {
+            captured_at: timestamp,
+            run_id: buildRunIdFromTimestamp(timestamp),
+            rank_roles: {},
+            aggregate_categories: {},
+            rank_season: latestSeasonByPlayer.get(playerConfig.player_id) ?? null,
+          });
+        }
+        return snapshotLookup.get(timestamp);
+      };
+
+      (rankRowsByPlayer.get(playerConfig.player_id) || []).forEach((row) => {
+        if (!row.time) return;
+        const state = ensureSnapshotState(row.time);
+        const role = normalizeRoleLock(row.role);
+        if (!role) return;
+        state.rank_roles[role] = {
+          role,
+          raw: {
+            division: row.division,
+            tier: row.tier,
+          },
+          label: null,
+          ordinal: convertRankOrdinalFromRaw({ division: row.division, tier: row.tier }),
+        };
+        state.rank_season = row.season;
+      });
+
+      (aggregateRowsByPlayer.get(playerConfig.player_id) || []).forEach((row) => {
+        if (!row.time) return;
+        const state = ensureSnapshotState(row.time);
+        if (!state.aggregate_categories["all-heroes"]) {
+          state.aggregate_categories["all-heroes"] = {};
+        }
+        const categoryKey = String(row.measurement || "").replace(/^career_stats_/, "");
+        state.aggregate_categories["all-heroes"][categoryKey] = convertInfluxCategoryObject(row);
+      });
+
+      const latestHeroRecords = Object.keys(latestHeroCategoriesByPlayer.get(playerConfig.player_id) || {})
+        .map((heroKey) => buildLiveHeroMetricRecord(heroKey, latestHeroCategoriesByPlayer.get(playerConfig.player_id)[heroKey]))
+        .filter(Boolean)
+        .sort((left, right) => {
+          const timeDelta =
+            numericValue(right.season_time_played_seconds, numericValue(right.time_played_seconds)) -
+            numericValue(left.season_time_played_seconds, numericValue(left.time_played_seconds));
+          if (timeDelta !== 0) return timeDelta;
+          const gamesDelta =
+            numericValue(right.season_games_played, numericValue(right.games_played)) -
+            numericValue(left.season_games_played, numericValue(left.games_played));
+          if (gamesDelta !== 0) return gamesDelta;
+          return String(left.hero_name || "").localeCompare(String(right.hero_name || ""));
+        });
+
+      const orderedTimestamps = [...snapshotLookup.keys()].sort((left, right) => new Date(left) - new Date(right));
+      const latestTimestamp = orderedTimestamps[orderedTimestamps.length - 1] || null;
+      const snapshots = orderedTimestamps.map((timestamp) => {
+        const state = snapshotLookup.get(timestamp);
+        const rankSummary = normalizeLiveRankSummary({
+          platform: "pc",
+          season: state.rank_season,
+          roles: Object.values(state.rank_roles).sort((left, right) => String(left.role).localeCompare(String(right.role))),
+        });
+        const allHeroRecord = state.aggregate_categories["all-heroes"]
+          ? buildLiveHeroMetricRecord("all-heroes", state.aggregate_categories["all-heroes"])
+          : null;
+        const metrics = allHeroRecord
+          ? {
+              kda: allHeroRecord.kda,
+              winrate: allHeroRecord.winrate,
+              games_played: allHeroRecord.games_played,
+              games_won: allHeroRecord.games_won,
+              games_lost: allHeroRecord.games_lost,
+              time_played_seconds: allHeroRecord.time_played_seconds,
+              total: allHeroRecord.total,
+              average: allHeroRecord.average,
+            }
+          : {
+              kda: null,
+              winrate: null,
+              games_played: 0,
+              games_won: 0,
+              games_lost: 0,
+              time_played_seconds: 0,
+              total: {},
+              average: {},
+            };
+        const heroes = latestTimestamp && timestamp === latestTimestamp ? latestHeroRecords : [];
+        const roles = heroes.length ? aggregateRoleMetricsFromHeroes(heroes) : [];
+        const preferredRole = getPreferredRoleFromRoles(roles, rankSummary);
+        const profile = buildLivePlaceholderProfile(
+          playerConfig.display_name,
+          rankSummary,
+          timestamp,
+          playerSummaryByPlayer.get(playerConfig.player_id) || null
+        );
+        return {
+          snapshot_id: `${buildRunIdFromTimestamp(timestamp)}-${playerConfig.slug}`,
+          run_id: buildRunIdFromTimestamp(timestamp),
+          captured_at: new Date(timestamp).toISOString(),
+          player_id: playerConfig.player_id,
+          player_slug: playerConfig.slug,
+          display_name: playerConfig.display_name,
+          battle_tag: playerConfig.battle_tag,
+          notes: playerConfig.notes,
+          provider: "influxdb",
+          fetch_status: "success",
+          wide_match_context: "mixed",
+          warnings: [],
+          profile,
+          metrics,
+          roles,
+          ranks: rankSummary,
+          normalized: {
+            preferred_role: preferredRole,
+            data_quality: "success",
+            top_heroes: heroes.slice(0, 3).map((hero) => hero.hero_name),
+          },
+          heroes,
+          raw_payloads: null,
+          title: profile.title || rankSummary.best_label || "Unranked",
+        };
+      });
+
+      if (!snapshots.length) {
+        failedPlayers.push({
+          display_name: playerConfig.display_name,
+          player_id: playerConfig.player_id,
+        });
+      }
+
+      allSnapshots.push(...snapshots);
+      const playerRecord = buildLivePlayerRecord(playerConfig, snapshots, fallbackPayload);
+      if (playerRecord) {
+        playerRecord.recommendations = { comfort: [], growth: [], avoid: [] };
+        players.push(playerRecord);
+      }
+    });
+
+    const runLookup = new Map();
+    [...allSnapshots]
+      .sort((left, right) => new Date(left.captured_at) - new Date(right.captured_at))
+      .forEach((snapshot) => {
+        if (!runLookup.has(snapshot.run_id)) {
+          runLookup.set(snapshot.run_id, {
+            run_id: snapshot.run_id,
+            timestamp: snapshot.captured_at,
+            started_at: snapshot.captured_at,
+            completed_at: snapshot.captured_at,
+            notes: "",
+            wide_match_context: "mixed",
+            snapshot_count: 0,
+            successful_players: 0,
+            failed_player_count: 0,
+            failed_player_names: [],
+            player_display_names: [],
+            player_slugs: [],
+          });
+        }
+        const run = runLookup.get(snapshot.run_id);
+        run.snapshot_count += 1;
+        run.successful_players += 1;
+        if (!run.player_display_names.includes(snapshot.display_name)) {
+          run.player_display_names.push(snapshot.display_name);
+        }
+        if (!run.player_slugs.includes(snapshot.player_slug)) {
+          run.player_slugs.push(snapshot.player_slug);
+        }
+      });
+
+    [...runLookup.values()].forEach((run) => {
+      const runSnapshots = allSnapshots.filter((snapshot) => snapshot.run_id === run.run_id);
+      const wideContext = buildWideMatchContextFromSnapshots(runSnapshots);
+      run.wide_match_context = wideContext;
+      runSnapshots.forEach((snapshot) => {
+        snapshot.wide_match_context = wideContext;
+      });
+    });
+
+    const runRecords = [...runLookup.values()].sort((left, right) => new Date(left.timestamp) - new Date(right.timestamp));
+    const latestRun = runRecords[runRecords.length - 1] || null;
+    const freshSnapshots = latestRun ? allSnapshots.filter((snapshot) => snapshot.run_id === latestRun.run_id).length : 0;
+    const nowIso = new Date().toISOString();
+
+    logLiveEvent(`Overview model assembled for ${players.length}/${playerConfigs.length} player(s)`);
+    return {
+      meta: {
+        team_name: fallbackPayload?.meta?.team_name || "Overwatch Team",
+        site_subtitle: fallbackPayload?.meta?.site_subtitle || "Live database-backed reporting.",
+        provider_name: "influxdb",
+        generated_at: nowIso,
+        config_path: fallbackPayload?.meta?.config_path || "",
+        project_root: fallbackPayload?.meta?.project_root || "",
+        latest_run: latestRun
+          ? {
+              run_id: latestRun.run_id,
+              timestamp: latestRun.timestamp,
+              notes: "",
+              wide_match_context: latestRun.wide_match_context || "mixed",
+            }
+          : fallbackPayload?.meta?.latest_run || { run_id: "", timestamp: "", notes: "", wide_match_context: "mixed" },
+        total_tracked_players: playerConfigs.length,
+        fresh_snapshots: freshSnapshots,
+        player_count_with_history: players.length,
+        stat_scope: "competitive-only",
+        source_mode: "live",
+        live_mode: true,
+        live_refresh_message: `Live data refreshed ${new Date(nowIso).toLocaleString()}.`,
+        live_source: liveConfig,
+        failed_players: failedPlayers,
+      },
+      overview: fallbackPayload?.overview || {},
+      players: players.sort((left, right) => String(left.display_name || "").localeCompare(String(right.display_name || ""))),
+      settings: {
+        removal_mode: "hide-only",
+        runs: runRecords,
+      },
+    };
+  };
+  const buildLivePlayerPayload = async (liveConfig, fallbackPayload, playerSlug) => {
+    const siteModel = await buildLiveSiteModel(liveConfig, fallbackPayload, { playerSlugs: [playerSlug] });
+    const payload = buildPagePayloadFromSiteModel(siteModel, {
+      page: "player",
+      context: { player_slug: playerSlug },
+      payload: { player: fallbackPayload?.player || null },
+    });
+    logLiveEvent(`Player model assembled for ${payload?.player?.display_name || playerSlug}`);
+    return payload;
+  };
   const buildPagePayloadFromSiteModel = (siteModel, originalPageData) => {
     if (originalPageData.page === "player") {
       const requestedSlug = originalPageData?.context?.player_slug || originalPageData?.payload?.player?.slug || "";
@@ -3681,7 +4098,81 @@
       renderSettings(payload);
     }
   };
-  const getPublishedSnapshotUrl = () => (pageData.page === "player" ? "../data/site-model.json" : "data/site-model.json");
+  const renderBootPlaceholder = (message) => {
+    const detail = escapeHtml(message || "Loading live data...");
+    if (pageData.page === "overview") {
+      const heroMeta = document.getElementById("hero-meta");
+      if (heroMeta) {
+        heroMeta.innerHTML = `<div class="meta-line"><span class="badge flat">Loading</span></div><div class="meta-line">${detail}</div>`;
+      }
+      [
+        "overview-summary",
+        "team-kda-chart",
+        "team-winrate-chart",
+        "team-rank-chart",
+        "comparison-chart",
+        "hero-pool-chart",
+        "player-grid",
+        "team-optimizer",
+      ].forEach((id) => emptyState(document.getElementById(id), message || "Loading live data..."));
+      const filters = document.getElementById("overview-filters");
+      if (filters) filters.innerHTML = "";
+      const visibility = document.getElementById("player-visibility-controls");
+      if (visibility) visibility.innerHTML = "";
+      return;
+    }
+    if (pageData.page === "player") {
+      const playerMeta = document.getElementById("player-meta");
+      if (playerMeta) {
+        playerMeta.innerHTML = `<div class="meta-line"><span class="badge flat">Loading</span></div><div class="meta-line">${detail}</div>`;
+      }
+      [
+        "player-summary",
+        "player-rank-chart",
+        "player-kda-chart",
+        "player-winrate-chart",
+        "player-role-chart",
+        "player-hero-usage-chart",
+        "player-hero-performance-chart",
+        "player-recommendations",
+        "player-trajectory",
+        "player-hero-leaderboards",
+        "player-hero-controls",
+      ].forEach((id) => emptyState(document.getElementById(id), message || "Loading player data..."));
+      return;
+    }
+    const settingsMeta = document.getElementById("settings-meta");
+    if (settingsMeta) {
+      settingsMeta.innerHTML = `<div class="meta-line"><span class="badge flat">Loading</span></div><div class="meta-line">${detail}</div>`;
+    }
+    ["settings-summary", "settings-run-list"].forEach((id) => emptyState(document.getElementById(id), message || "Loading snapshot controls..."));
+  };
+  const getPublishedSnapshotUrl = () => {
+    if (pageData.page === "player") {
+      const slug = pageData?.context?.player_slug || pageData?.fallback?.player_slug || "";
+      return `../data/players/${slug}.json`;
+    }
+    if (pageData.page === "settings") {
+      return "data/settings.json";
+    }
+    return "data/overview.json";
+  };
+  const normalizeFetchedPagePayload = (payload) => {
+    if (!payload) return null;
+    if (pageData.page === "player") {
+      if (payload.meta && payload.player) {
+        return payload;
+      }
+      return buildPagePayloadFromSiteModel(payload, pageData);
+    }
+    if (pageData.page === "settings") {
+      if (payload.meta && payload.settings) {
+        return payload;
+      }
+      return buildPagePayloadFromSiteModel(payload, pageData);
+    }
+    return payload.meta && payload.players ? payload : buildPagePayloadFromSiteModel(payload, pageData);
+  };
   const resolvePublishedSnapshotPayload = async () => {
     if (!["http:", "https:"].includes(window.location.protocol)) {
       return null;
@@ -3689,7 +4180,8 @@
 
     let response;
     try {
-      response = await fetch(getPublishedSnapshotUrl(), { method: "GET", cache: "no-store" });
+      logLiveEvent(`Published fallback fetch started (${pageData.page})`, getPublishedSnapshotUrl());
+      response = await fetch(getPublishedSnapshotUrl(), { method: "GET", cache: "default" });
     } catch (error) {
       return null;
     }
@@ -3698,20 +4190,25 @@
       return null;
     }
 
-    let siteModel;
+    let payload;
     try {
-      siteModel = await response.json();
+      payload = await response.json();
     } catch (error) {
       throw new Error("Published snapshot file is not valid JSON.");
     }
 
-    const pagePayload = buildPagePayloadFromSiteModel(siteModel, pageData);
+    const pagePayload = normalizeFetchedPagePayload(payload);
+    logLiveEvent(`Published fallback loaded for ${pageData.page}`);
     return withSnapshotStatusMessage(
       pagePayload,
       `Live server unavailable, so the page fell back to the last published snapshot at ${new Date().toLocaleString()}.`,
       "published-snapshot"
     );
   };
+  const getLiveCacheScope = () =>
+    pageData.page === "player"
+      ? `player:${pageData?.context?.player_slug || pageData?.fallback?.player_slug || "unknown"}`
+      : pageData.page;
   const resolveLivePagePayload = async () => {
     const liveConfig = pageData.live;
     if (!liveConfig?.enabled || liveConfig.provider !== "influxdb" || !liveConfig.browser_refresh_enabled) {
@@ -3722,38 +4219,100 @@
       throw new Error("Live browser fetch needs the database endpoint to be served over HTTPS when this page is hosted over HTTPS.");
     }
 
-    const cachedSiteModel = readLiveCache(liveConfig);
-    if (cachedSiteModel) {
-      return buildPagePayloadFromSiteModel(cachedSiteModel, pageData);
+    const cacheScope = getLiveCacheScope();
+    const cachedPayload = readLiveCache(liveConfig, cacheScope);
+    if (cachedPayload) {
+      logLiveEvent(`Using cached live payload (${cacheScope})`);
+      return cachedPayload;
     }
 
-    const siteModel = await buildLiveSiteModel(liveConfig, pageData.payload);
-    writeLiveCache(liveConfig, siteModel);
-    return buildPagePayloadFromSiteModel(siteModel, pageData);
+    const fallbackPayload =
+      pageData.page === "player"
+        ? {
+            meta: { team_name: pageData?.fallback?.team_name || "Overwatch Team" },
+            player: {
+              slug: pageData?.context?.player_slug || pageData?.fallback?.player_slug || "",
+              display_name: pageData?.fallback?.player_display_name || pageData?.context?.player_slug || "Player",
+            },
+          }
+        : {
+            meta: {
+              team_name: pageData?.fallback?.team_name || "Overwatch Team",
+              site_subtitle: pageData?.fallback?.site_subtitle || "Live database-backed reporting.",
+            },
+          };
+    let payload;
+    if (pageData.page === "player") {
+      payload = await buildLivePlayerPayload(liveConfig, fallbackPayload, pageData?.context?.player_slug || pageData?.fallback?.player_slug || "");
+    } else if (pageData.page === "settings") {
+      const siteModel = await buildLiveOverviewSiteModel(liveConfig, fallbackPayload);
+      payload = { meta: siteModel.meta, settings: siteModel.settings };
+    } else {
+      payload = await buildLiveOverviewSiteModel(liveConfig, fallbackPayload);
+    }
+    writeLiveCache(liveConfig, cacheScope, payload);
+    return payload;
   };
   const boot = async () => {
-    renderCurrentPage(pageData.payload);
+    const bootStartedAt = performance.now();
+    logLiveEvent(`Page boot started (${pageData.page})`);
+    renderBootPlaceholder("Loading live data...");
 
     try {
-      if (pageData.live?.enabled && pageData.live?.browser_refresh_enabled) {
-        try {
-          const livePayload = await resolveLivePagePayload();
-          if (livePayload) {
-            renderCurrentPage(withLiveStatusMessage(livePayload, `Live server refreshed ${new Date().toLocaleString()}.`, true));
-            return;
-          }
-        } catch (liveError) {
-          console.warn("Live refresh failed, trying the published snapshot fallback.", liveError);
+      const liveEnabled = pageData.live?.enabled && pageData.live?.browser_refresh_enabled;
+      const livePromise = liveEnabled
+        ? resolveLivePagePayload()
+            .then((payload) => ({ kind: "live", payload }))
+            .catch((error) => ({ kind: "live-error", error }))
+        : Promise.resolve({ kind: "live-disabled", payload: null });
+      const publishedPromise = resolvePublishedSnapshotPayload()
+        .then((payload) => ({ kind: "published", payload }))
+        .catch((error) => ({ kind: "published-error", error }));
+
+      const firstResult = await Promise.race([livePromise, publishedPromise]);
+      let publishedRendered = false;
+
+      if (firstResult?.kind === "live" && firstResult.payload) {
+        logLiveEvent(`Live payload ready after ${(performance.now() - bootStartedAt).toFixed(0)}ms`);
+        renderCurrentPage(withLiveStatusMessage(firstResult.payload, `Live server refreshed ${new Date().toLocaleString()}.`, true));
+        return;
+      }
+
+      if (firstResult?.kind === "published" && firstResult.payload) {
+        logLiveEvent(`Published fallback painted after ${(performance.now() - bootStartedAt).toFixed(0)}ms`);
+        renderCurrentPage(firstResult.payload);
+        publishedRendered = true;
+      }
+
+      if (liveEnabled) {
+        const liveResult = firstResult?.kind === "live" || firstResult?.kind === "live-error" ? firstResult : await livePromise;
+        if (liveResult?.kind === "live" && liveResult.payload) {
+          logLiveEvent(`Live payload ready after ${(performance.now() - bootStartedAt).toFixed(0)}ms`);
+          renderCurrentPage(withLiveStatusMessage(liveResult.payload, `Live server refreshed ${new Date().toLocaleString()}.`, true));
+          return;
+        }
+        if (liveResult?.kind === "live-error") {
+          logLiveWarn("Live refresh failed, trying the published snapshot fallback.", liveResult.error);
         }
       }
 
-      const publishedPayload = await resolvePublishedSnapshotPayload();
-      if (publishedPayload) {
-        renderCurrentPage(publishedPayload);
+      if (!publishedRendered) {
+        const publishedResult =
+          firstResult?.kind === "published" || firstResult?.kind === "published-error" ? firstResult : await publishedPromise;
+        if (publishedResult?.kind === "published" && publishedResult.payload) {
+          logLiveEvent(`Published fallback ready after ${(performance.now() - bootStartedAt).toFixed(0)}ms`);
+          renderCurrentPage(publishedResult.payload);
+          return;
+        }
+        if (publishedResult?.kind === "published-error") {
+          throw publishedResult.error;
+        }
       }
+
+      throw new Error("No live or published payload was available for this page.");
     } catch (error) {
-      console.warn("Live and snapshot refresh both failed, keeping the embedded fallback payload.", error);
-      renderCurrentPage(withSnapshotStatusMessage(pageData.payload, `Live refresh failed: ${error?.message || "Unknown error"}`, "embedded-fallback"));
+      logLiveWarn("Live and published refresh both failed.", error);
+      renderBootPlaceholder(`Live refresh failed: ${error?.message || "Unknown error"}`);
     }
   };
 
