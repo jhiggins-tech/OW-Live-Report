@@ -206,6 +206,18 @@ export default function OptimizerPage() {
               >
                 {result.lineup.wideAssessment.label === 'unknown' ? 'Wide check unknown' : `${result.lineup.wideAssessment.label} group`}
               </span>
+              {result.lineup.wideAssessment.spreadDivisions !== null ? (
+                <span
+                  style={{ color: 'var(--muted)', fontSize: '0.9rem' }}
+                  title={
+                    result.lineup.wideAssessment.threshold !== null
+                      ? `Wide threshold: ${result.lineup.wideAssessment.threshold} divisions`
+                      : undefined
+                  }
+                >
+                  spread {result.lineup.wideAssessment.spreadDivisions.toFixed(1)} divisions
+                </span>
+              ) : null}
               <span style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
                 team KDA {result.lineup.teamKda.toFixed(2)} · team win {fmtPercent(result.lineup.teamWinRate)} · score {result.lineup.totalScore.toFixed(3)}
               </span>
