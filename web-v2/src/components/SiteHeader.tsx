@@ -5,6 +5,7 @@ export default function SiteHeader() {
   const location = useLocation();
   const isOverview = location.pathname === '/' || location.pathname === '';
   const isSettings = location.pathname === '/settings';
+  const isOptimizer = location.pathname === '/optimizer';
   const cfg = getRuntimeConfig();
   return (
     <header className="hero-shell">
@@ -15,6 +16,9 @@ export default function SiteHeader() {
           <Link to="/" style={{ fontSize: '0.95rem' }}>← Team overview</Link>
         ) : null}
         <nav style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: '0.85rem' }}>
+          {!isOptimizer ? (
+            <Link to="/optimizer" style={{ color: 'var(--muted)' }}>Optimizer</Link>
+          ) : null}
           {!isSettings ? (
             <Link to="/settings" style={{ color: 'var(--muted)' }}>Settings</Link>
           ) : null}

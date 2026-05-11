@@ -9,6 +9,7 @@ import App from './App';
 import OverviewPage from './pages/OverviewPage';
 import PlayerPage from './pages/PlayerPage';
 import SettingsPage from './pages/SettingsPage';
+import OptimizerPage from './pages/OptimizerPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { loadRuntimeConfig } from './lib/runtimeConfig';
 
@@ -43,6 +44,7 @@ const router = createHashRouter([
     children: [
       { index: true, element: <OverviewPage /> },
       { path: 'players/:slug', element: <PlayerPage /> },
+      { path: 'optimizer', element: <OptimizerPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
