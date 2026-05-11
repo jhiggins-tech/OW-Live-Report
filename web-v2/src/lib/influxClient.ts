@@ -3,7 +3,19 @@ import { getRuntimeConfig } from './runtimeConfig';
 
 const MAX_CONCURRENT = 4;
 const SESSION_PREFIX = 'owr-v2:influx:';
-const SESSION_TTL_MS = 5 * 60 * 1000;
+// FRESH_TTL: results below this age are served from cache without refetching.
+// SESSION_TTL: results below this age stay around as a stale-cache fallback
+// when a live fetch fails (V2.1: ports V1's fallback_to_stale_cache).
+const FRESH_TTL_MS = 5 * 60 * 1000;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+export const STALE_DATA_EVENT = 'owr-v2:stale-data-served';
+
+export interface StaleDataEventDetail {
+  query: string;
+  ageMs: number;
+  error: Error;
+}
 
 let inflight = 0;
 const queue: Array<() => void> = [];
@@ -27,16 +39,19 @@ function release(): void {
   if (next) next();
 }
 
-function safeSessionGet(key: string): InfluxResponse | null {
+interface CachedEntry { at: number; body: InfluxResponse }
+
+function safeSessionRead(key: string): CachedEntry | null {
   try {
     const raw = sessionStorage.getItem(SESSION_PREFIX + key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { at: number; body: InfluxResponse };
+    const parsed = JSON.parse(raw) as CachedEntry;
+    if (typeof parsed.at !== 'number') return null;
     if (Date.now() - parsed.at > SESSION_TTL_MS) {
       sessionStorage.removeItem(SESSION_PREFIX + key);
       return null;
     }
-    return parsed.body;
+    return parsed;
   } catch {
     return null;
   }
@@ -48,6 +63,12 @@ function safeSessionSet(key: string, body: InfluxResponse): void {
   } catch {
     // ignore quota errors
   }
+}
+
+function dispatchStale(query: string, ageMs: number, error: Error): void {
+  if (typeof window === 'undefined') return;
+  const detail: StaleDataEventDetail = { query, ageMs, error };
+  window.dispatchEvent(new CustomEvent<StaleDataEventDetail>(STALE_DATA_EVENT, { detail }));
 }
 
 export class InfluxQueryError extends Error {
@@ -63,8 +84,10 @@ export class InfluxQueryError extends Error {
 
 export async function runInfluxQuery(query: string, options?: { signal?: AbortSignal }): Promise<InfluxResponse> {
   const cacheKey = query;
-  const cached = safeSessionGet(cacheKey);
-  if (cached) return cached;
+  const cached = safeSessionRead(cacheKey);
+  if (cached && Date.now() - cached.at <= FRESH_TTL_MS) {
+    return cached.body;
+  }
 
   await acquire();
   try {
@@ -72,14 +95,26 @@ export async function runInfluxQuery(query: string, options?: { signal?: AbortSi
     const params = new URLSearchParams({ db: database, q: query, epoch: 'ms' });
     const init: RequestInit = { method: 'GET', headers: { Accept: 'application/json' } };
     if (options?.signal) init.signal = options.signal;
-    const res = await fetch(`${queryUrl}?${params.toString()}`, init);
-    if (!res.ok) {
-      throw new InfluxQueryError(`HTTP ${res.status} from InfluxDB`, query, res.status);
-    }
-    const body = (await res.json()) as InfluxResponse;
-    if (body.error) throw new InfluxQueryError(body.error, query);
-    for (const r of body.results ?? []) {
-      if (r.error) throw new InfluxQueryError(r.error, query);
+    let body: InfluxResponse;
+    try {
+      const res = await fetch(`${queryUrl}?${params.toString()}`, init);
+      if (!res.ok) {
+        throw new InfluxQueryError(`HTTP ${res.status} from InfluxDB`, query, res.status);
+      }
+      body = (await res.json()) as InfluxResponse;
+      if (body.error) throw new InfluxQueryError(body.error, query);
+      for (const r of body.results ?? []) {
+        if (r.error) throw new InfluxQueryError(r.error, query);
+      }
+    } catch (err) {
+      // Fall back to any cached body still within the 24h stale window.
+      // Notify listeners (StaleBanner) so the UI can flag the staleness.
+      if (cached) {
+        const wrapped = err instanceof Error ? err : new Error(String(err));
+        dispatchStale(query, Date.now() - cached.at, wrapped);
+        return cached.body;
+      }
+      throw err;
     }
     safeSessionSet(cacheKey, body);
     return body;
