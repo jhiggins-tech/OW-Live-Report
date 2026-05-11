@@ -10,6 +10,7 @@ import OverviewPage from './pages/OverviewPage';
 import PlayerPage from './pages/PlayerPage';
 import SettingsPage from './pages/SettingsPage';
 import NotFoundPage from './pages/NotFoundPage';
+import { loadRuntimeConfig } from './lib/runtimeConfig';
 
 import './theme/tokens.css';
 import './theme/global.css';
@@ -47,6 +48,10 @@ const router = createHashRouter([
     ],
   },
 ]);
+
+// Wait for runtime-config.json before mounting so any module that calls
+// getRuntimeConfig() at render time sees the loaded values, not defaults.
+await loadRuntimeConfig();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

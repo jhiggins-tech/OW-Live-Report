@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "build:roster": "node scripts/build-roster.mjs",
-    "dev": "pnpm run build:roster && vite",
-    "build": "pnpm run build:roster && tsc --noEmit && vite build",
+    "build:config": "node scripts/build-runtime-config.mjs",
+    "prebuild": "pnpm run build:roster && pnpm run build:config",
+    "dev": "pnpm run prebuild && vite",
+    "build": "pnpm run prebuild && tsc --noEmit && vite build",
     "preview": "vite preview --base=/v2/",
     "typecheck": "tsc --noEmit"
   },

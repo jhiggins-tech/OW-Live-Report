@@ -1,3 +1,5 @@
+import { getRuntimeConfig } from '../../runtimeConfig';
+
 // Bucket sizes + time windows per chart. Tune here, not in the chart file.
 // All durations are InfluxQL duration literals.
 
@@ -22,8 +24,14 @@ export const BUCKETS = {
   heroPerf: '1w',
 } as const;
 
-export const GAMEMODE = import.meta.env.VITE_INFLUX_GAMEMODE ?? 'competitive';
+// Read from runtime config at call time so values can change between renders.
+// Getters (not const) because the config loads after module init.
+export function getGamemode(): string {
+  return getRuntimeConfig().influx.gamemode;
+}
 
-export const TOP_HERO_COUNT = Number(import.meta.env.VITE_TOP_HERO_COUNT ?? 6);
+export function getTopHeroCount(): number {
+  return getRuntimeConfig().ui.topHeroCount;
+}
 
 export const ONE_GAME_OUTLIER_WIN_RATE = 100;

@@ -2,7 +2,8 @@ import { parseSeries, runInfluxQuery } from '../../../influxClient';
 import { heroKey, prettyHeroName } from '../../../normalize/heroKey';
 import { safeNumber } from '../../../normalize/kda';
 import { quoteValue } from '../../_shared';
-import { BUCKETS, GAMEMODE, TIME_WINDOWS, TOP_HERO_COUNT } from '../_constants';
+import { BUCKETS, TIME_WINDOWS } from '../_constants';
+import { getGamemode, getTopHeroCount } from '../_constants';
 
 export interface PlayerHeroUsagePoint {
   time: number;
@@ -17,7 +18,7 @@ export interface PlayerHeroUsageResult {
 export async function fetchPlayerHeroUsage(playerId: string): Promise<PlayerHeroUsageResult> {
   const window = TIME_WINDOWS.playerSeason;
   const bucket = BUCKETS.heroUsage;
-  const q = `SELECT sum("time_played") AS tp FROM "career_stats_game" WHERE "player"='${quoteValue(playerId)}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
+  const q = `SELECT sum("time_played") AS tp FROM "career_stats_game" WHERE "player"='${quoteValue(playerId)}' AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
   const body = await runInfluxQuery(q);
 
   const totals = new Map<string, number>();
@@ -39,7 +40,7 @@ export async function fetchPlayerHeroUsage(playerId: string): Promise<PlayerHero
   const heroOrder = [...totals.entries()]
     .map(([key, total]) => ({ key, pretty: prettyHeroName(key), total }))
     .sort((a, b) => b.total - a.total)
-    .slice(0, Math.max(1, TOP_HERO_COUNT));
+    .slice(0, Math.max(1, getTopHeroCount()));
 
   const heroSet = new Set(heroOrder.map((h) => h.key));
   const points = [...byTime.keys()]

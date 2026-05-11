@@ -4,6 +4,7 @@ data/
 !docs/data/site-model.json
 !docs/v2/data/
 !docs/v2/data/roster.json
+!docs/v2/data/runtime-config.json
 logs/
 output/
 tmp/

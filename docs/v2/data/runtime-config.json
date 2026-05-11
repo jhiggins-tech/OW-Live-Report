@@ -1,0 +1,11 @@
+{
+  "team": {
+    "name": "Weasels",
+    "subtitle": "Live competitive reporting"
+  },
+  "influx": {
+    "queryUrl": "https://owstats.jhiggins.tech/query",
+    "database": "ow_stats_telegraf",
+    "gamemode": "competitive"
+  }
+}
