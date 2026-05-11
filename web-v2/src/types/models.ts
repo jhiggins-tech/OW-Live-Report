@@ -7,6 +7,10 @@ export interface RosterPlayer {
   display: string;
   slug: string;
   notes?: string;
+  // Admin-set defaults from config/team.sample.json `player_overrides`.
+  // The user's localStorage toggles still win once they touch a hero.
+  hiddenHeroes?: string[];
+  lockedRole?: Role;
 }
 
 export interface Roster {

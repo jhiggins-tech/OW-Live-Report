@@ -11,7 +11,7 @@ import HeroUsageStacked from '../components/charts/HeroUsageStacked';
 import HeroPerfLines from '../components/charts/HeroPerfLines';
 import HeroLeaderboard from '../components/HeroLeaderboard';
 
-function useHiddenHeroes(slug: string): {
+function useHiddenHeroes(slug: string, adminDefaults: readonly string[] | undefined): {
   hidden: Set<string>;
   toggle: (hero: string) => void;
 } {
@@ -20,9 +20,14 @@ function useHiddenHeroes(slug: string): {
     if (typeof window === 'undefined') return new Set();
     try {
       const raw = window.localStorage.getItem(storageKey);
-      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+      // Admin defaults seed the initial state only when localStorage is
+      // untouched. Once the user toggles anything (even back to empty),
+      // an empty array is stored, and admin defaults are ignored
+      // thereafter — the user owns their preferences.
+      if (raw === null) return new Set(adminDefaults ?? []);
+      return new Set(JSON.parse(raw) as string[]);
     } catch {
-      return new Set();
+      return new Set(adminDefaults ?? []);
     }
   });
   useEffect(() => {
@@ -54,7 +59,7 @@ export default function PlayerPage() {
     queryFn: () => fetchLatestPlayerProfile(player!.playerId),
     enabled: !!player,
   });
-  const { hidden, toggle } = useHiddenHeroes(slug ?? '');
+  const { hidden, toggle } = useHiddenHeroes(slug ?? '', player?.hiddenHeroes);
 
   if (roster.isLoading) return <div className="panel skeleton" style={{ minHeight: 300 }} />;
   if (!player) {
@@ -77,7 +82,17 @@ export default function PlayerPage() {
             aria-hidden="true"
           />
           <div>
-            <h2>{player.display}</h2>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <h2>{player.display}</h2>
+              {player.lockedRole ? (
+                <span
+                  className={`role-pill ${player.lockedRole}`}
+                  title="Admin-set primary role from team.sample.json"
+                >
+                  {player.lockedRole}
+                </span>
+              ) : null}
+            </div>
             <div style={{ color: 'var(--muted)' }}>{player.battleTag}</div>
             {player.notes ? <div style={{ marginTop: 4 }}>{player.notes}</div> : null}
             <div style={{ marginTop: 8, fontSize: '0.85rem', color: 'var(--muted)' }}>

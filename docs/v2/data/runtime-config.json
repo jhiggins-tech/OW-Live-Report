@@ -1,15 +1,1 @@
-{
-  "team": {
-    "name": "Weasels",
-    "subtitle": "Live competitive reporting with team and player drill-downs."
-  },
-  "ui": {
-    "topHeroCount": 6,
-    "linkToV1Url": "../"
-  },
-  "influx": {
-    "queryUrl": "https://owstats.jhiggins.tech/query",
-    "database": "ow_stats_telegraf",
-    "gamemode": "competitive"
-  }
-}
+{}
