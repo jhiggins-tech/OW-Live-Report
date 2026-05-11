@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
+import { useTeamTrajectories } from '../hooks/useTeamTrajectories';
 import StatCards from '../components/StatCards';
 import RosterGrid from '../components/RosterGrid';
 import WideMatchBanner from '../components/WideMatchBanner';
+import BiggestMovers from '../components/BiggestMovers';
 import TeamKdaChart from '../components/charts/TeamKdaChart';
 import TeamWinRateChart from '../components/charts/TeamWinRateChart';
 import TeamRankChart from '../components/charts/TeamRankChart';
@@ -20,6 +22,10 @@ export default function OverviewPage() {
     [roster.data, hidden],
   );
 
+  // Piggy-backs on the same three queries the team trend charts already fire,
+  // so no extra Influx work.
+  const { byPlayerId: trajectoryByPlayerId } = useTeamTrajectories(visible);
+
   if (roster.isLoading) {
     return <div className="panel skeleton" style={{ minHeight: 300 }} />;
   }
@@ -32,6 +38,8 @@ export default function OverviewPage() {
       <StatCards players={visible} />
 
       <WideMatchBanner players={visible} />
+
+      <BiggestMovers players={visible} />
 
       <section className="panel">
         <header className="section-head">
@@ -86,7 +94,7 @@ export default function OverviewPage() {
             ) : null}
           </p>
         </header>
-        <RosterGrid players={visible} />
+        <RosterGrid players={visible} trajectoryByPlayerId={trajectoryByPlayerId} />
       </section>
     </div>
   );
