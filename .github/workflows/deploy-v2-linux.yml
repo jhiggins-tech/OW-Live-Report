@@ -1,0 +1,80 @@
+name: Deploy V2 (Linux)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web-v2/**'
+      - 'config/tracked-battletags.txt'
+      - '.github/workflows/deploy-v2-linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-v2-linux
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web-v2
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web-v2/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build roster manifest
+        run: pnpm run build:roster
+
+      - name: Build V2 site
+        run: pnpm run build
+
+      - name: Commit refreshed docs/v2/ back to main
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/v2
+          if git diff --cached --quiet; then
+            echo 'No docs/v2 changes to commit.'
+            exit 0
+          fi
+          git commit -m 'ci(v2): refresh docs/v2 [skip ci]'
+
+          # Race with V1's deploy-windows.yml commit-back. Both write under
+          # docs/ but to disjoint paths, so a rebase+retry resolves it.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt). Fetching + rebasing."
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo 'Push failed after 5 attempts.'
+          exit 1
