@@ -8,6 +8,7 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 import App from './App';
 import OverviewPage from './pages/OverviewPage';
 import PlayerPage from './pages/PlayerPage';
+import SettingsPage from './pages/SettingsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 import './theme/tokens.css';
@@ -41,6 +42,7 @@ const router = createHashRouter([
     children: [
       { index: true, element: <OverviewPage /> },
       { path: 'players/:slug', element: <PlayerPage /> },
+      { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

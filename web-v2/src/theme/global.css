@@ -187,7 +187,22 @@ button[aria-pressed='true'] {
 .roster-card:hover { transform: translateY(-2px); border-color: rgba(89, 194, 255, 0.5); }
 .roster-card .name { font-weight: 600; }
 .roster-card .tag { color: var(--muted); font-size: 0.85rem; }
-.roster-card .notes { color: var(--muted); font-size: 0.78rem; margin-top: 4px; }
+.roster-card .notes {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.note-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  background: rgba(89, 194, 255, 0.12);
+  border: 1px solid rgba(89, 194, 255, 0.32);
+  color: var(--sky);
+}
 
 .player-header {
   display: flex;
