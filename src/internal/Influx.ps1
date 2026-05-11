@@ -447,7 +447,7 @@ function Merge-OwReportInfluxRunRecords {
 
     return @(
         $runLookup.Values |
-            Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' }
+            Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') }
     )
 }
 
@@ -458,7 +458,7 @@ function Get-OwReportInfluxLatestSnapshotsByPlayer {
     )
 
     $latestByPlayer = @{}
-    foreach ($snapshot in @($Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })) {
+    foreach ($snapshot in @($Snapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })) {
         $playerId = Get-OwReportObjectValue -Object $snapshot -Path @('player_id')
         if ([string]::IsNullOrWhiteSpace($playerId)) {
             continue
@@ -1260,7 +1260,7 @@ function Get-OwReportInfluxDataset {
         }
     }
 
-    foreach ($snapshot in @($allSnapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })) {
+    foreach ($snapshot in @($allSnapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })) {
         if (-not $runLookup.ContainsKey($snapshot.run_id)) {
             $runLookup[$snapshot.run_id] = [ordered]@{
                 run_id = $snapshot.run_id
@@ -1295,7 +1295,7 @@ function Get-OwReportInfluxDataset {
         $runLookup[$runId].warnings = @($runSnapshots | ForEach-Object { $_.warnings } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
     }
 
-    $runRecords = Merge-OwReportInfluxRunRecords -ExistingRunRecords @() -NewRunRecords @($runLookup.Values | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+    $runRecords = Merge-OwReportInfluxRunRecords -ExistingRunRecords @() -NewRunRecords @($runLookup.Values | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') })
 
     if ($newSnapshots.Count -eq 0) {
         Write-OwReportLog -RunContext $RunContext -Message 'No newer database snapshots were found. Reusing the published snapshot state.'
@@ -1303,7 +1303,7 @@ function Get-OwReportInfluxDataset {
 
     return [ordered]@{
         hero_catalog = $heroCatalog
-        snapshots = @($allSnapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })
+        snapshots = @($allSnapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })
         run_records = $runRecords
         failed_players = $failedPlayers
         player_warnings = $playerWarnings
