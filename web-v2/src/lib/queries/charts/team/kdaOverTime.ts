@@ -1,4 +1,4 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
 import { BUCKETS, GAMEMODE, TIME_WINDOWS } from '../_constants';
@@ -19,10 +19,7 @@ export async function fetchTeamKdaOverTime(players: RosterPlayer[]): Promise<Tea
   const combatQ = `SELECT mean("eliminations") AS e, mean("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
   const assistsQ = `SELECT mean("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
 
-  const [combatBody, assistsBody] = await Promise.all([
-    runInfluxQuery(combatQ),
-    runInfluxQuery(assistsQ),
-  ]);
+  const [combat, assists] = await runInfluxMultiQuery([combatQ, assistsQ]);
 
   const buckets = new Map<number, Map<string, { e?: number; d?: number; a?: number }>>();
   const getBucket = (time: number, player: string) => {
@@ -33,7 +30,7 @@ export async function fetchTeamKdaOverTime(players: RosterPlayer[]): Promise<Tea
     return r;
   };
 
-  for (const s of parseSeries<{ time: number; e: number | null; d: number | null }>(combatBody)) {
+  for (const s of parseStatementSeries<{ time: number; e: number | null; d: number | null }>(combat)) {
     const tag = s.tags.player ?? '';
     for (const row of s.rows) {
       const t = Number(row.time);
@@ -45,7 +42,7 @@ export async function fetchTeamKdaOverTime(players: RosterPlayer[]): Promise<Tea
       if (d !== null) r.d = d;
     }
   }
-  for (const s of parseSeries<{ time: number; a: number | null }>(assistsBody)) {
+  for (const s of parseStatementSeries<{ time: number; a: number | null }>(assists)) {
     const tag = s.tags.player ?? '';
     for (const row of s.rows) {
       const t = Number(row.time);

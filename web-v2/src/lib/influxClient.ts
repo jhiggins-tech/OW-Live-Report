@@ -1,4 +1,4 @@
-import type { InfluxResponse, InfluxSeries, ParsedSeries } from '../types/influx';
+import type { InfluxResponse, InfluxSeries, InfluxStatementResult, ParsedSeries } from '../types/influx';
 
 const QUERY_URL = import.meta.env.VITE_INFLUX_QUERY_URL ?? 'https://owstats.jhiggins.tech/query';
 const DATABASE = import.meta.env.VITE_INFLUX_DATABASE ?? 'ow_stats_telegraf';
@@ -99,6 +99,31 @@ export function parseSeries<TRow extends Record<string, number | string | null>>
     }
   }
   return out;
+}
+
+export function parseStatementSeries<TRow extends Record<string, number | string | null>>(
+  result: InfluxStatementResult | undefined,
+): ParsedSeries<TRow>[] {
+  if (!result) return [];
+  return (result.series ?? []).map((s) => toParsed<TRow>(s));
+}
+
+// Runs N InfluxQL statements joined by ';' as a single HTTP request and
+// returns the per-statement results in order. The server processes
+// statements serially regardless, but bundling saves a round-trip per
+// statement (~100ms each over TLS) and avoids re-queueing on the client.
+export async function runInfluxMultiQuery(
+  queries: string[],
+  options?: { signal?: AbortSignal },
+): Promise<InfluxStatementResult[]> {
+  if (queries.length === 0) return [];
+  if (queries.length === 1) {
+    const body = await runInfluxQuery(queries[0]!, options);
+    return body.results ?? [];
+  }
+  const combined = queries.join('; ');
+  const body = await runInfluxQuery(combined, options);
+  return body.results ?? [];
 }
 
 function toParsed<TRow extends Record<string, number | string | null>>(series: InfluxSeries): ParsedSeries<TRow> {

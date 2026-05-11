@@ -1,4 +1,4 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
 import { GAMEMODE, TIME_WINDOWS } from '../_constants';
@@ -13,22 +13,18 @@ export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<Playe
   const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
   const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
 
-  const [c, a, g] = await Promise.all([
-    runInfluxQuery(combatQ),
-    runInfluxQuery(assistsQ),
-    runInfluxQuery(gameQ),
-  ]);
+  const [combat, assists, game] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ]);
 
   const cByP = new Map<string, { e: number | null; d: number | null }>();
-  for (const s of parseSeries<{ e: number | null; d: number | null }>(c)) {
+  for (const s of parseStatementSeries<{ e: number | null; d: number | null }>(combat)) {
     cByP.set(s.tags.player ?? '', { e: safeNumber(s.rows[0]?.e), d: safeNumber(s.rows[0]?.d) });
   }
   const aByP = new Map<string, number | null>();
-  for (const s of parseSeries<{ a: number | null }>(a)) {
+  for (const s of parseStatementSeries<{ a: number | null }>(assists)) {
     aByP.set(s.tags.player ?? '', safeNumber(s.rows[0]?.a));
   }
   const gByP = new Map<string, { wp: number | null; gp: number | null; t: number | null }>();
-  for (const s of parseSeries<{ time: number; wp: number | null; gp: number | null }>(g)) {
+  for (const s of parseStatementSeries<{ time: number; wp: number | null; gp: number | null }>(game)) {
     gByP.set(s.tags.player ?? '', {
       wp: safeNumber(s.rows[0]?.wp),
       gp: safeNumber(s.rows[0]?.gp),
@@ -38,16 +34,16 @@ export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<Playe
 
   return players.map((p) => {
     const comb = cByP.get(p.playerId);
-    const assists = aByP.get(p.playerId) ?? null;
-    const game = gByP.get(p.playerId);
+    const assistsVal = aByP.get(p.playerId) ?? null;
+    const gameVal = gByP.get(p.playerId);
     return {
       player: p.playerId,
       display: p.display,
       slug: p.slug,
-      kda: kdaFrom(comb?.e, assists, comb?.d),
-      winRate: game?.wp ?? null,
-      gamesPlayed: game?.gp ?? null,
-      lastSeen: game?.t ?? null,
+      kda: kdaFrom(comb?.e, assistsVal, comb?.d),
+      winRate: gameVal?.wp ?? null,
+      gamesPlayed: gameVal?.gp ?? null,
+      lastSeen: gameVal?.t ?? null,
       rankOrdinal: null,
     };
   });

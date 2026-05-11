@@ -1,4 +1,4 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
 import { GAMEMODE, TIME_WINDOWS } from '../_constants';
@@ -22,18 +22,15 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
   const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
   const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
-  const summaryQ = `SELECT last("last_updated_at") AS lu FROM "player_summary" WHERE "player" =~ /${regex}/ GROUP BY "player"`;
+  // last(username) is the cheapest way to recover the per-player row time
+  // from player_summary (there is no last_updated_at field on the schema).
+  const summaryQ = `SELECT last("username") AS u FROM "player_summary" WHERE "player" =~ /${regex}/ GROUP BY "player"`;
 
-  const [combatBody, assistsBody, gameBody, summaryBody] = await Promise.all([
-    runInfluxQuery(combatQ),
-    runInfluxQuery(assistsQ),
-    runInfluxQuery(gameQ),
-    runInfluxQuery(summaryQ),
-  ]);
+  const [combat, assists, game, summary] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ, summaryQ]);
 
   const eByPlayer = new Map<string, number>();
   const dByPlayer = new Map<string, number>();
-  for (const s of parseSeries<{ e: number | null; d: number | null }>(combatBody)) {
+  for (const s of parseStatementSeries<{ e: number | null; d: number | null }>(combat)) {
     const tag = s.tags.player ?? '';
     const e = safeNumber(s.rows[0]?.e);
     const d = safeNumber(s.rows[0]?.d);
@@ -42,14 +39,14 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   }
 
   const aByPlayer = new Map<string, number>();
-  for (const s of parseSeries<{ a: number | null }>(assistsBody)) {
+  for (const s of parseStatementSeries<{ a: number | null }>(assists)) {
     const tag = s.tags.player ?? '';
     const a = safeNumber(s.rows[0]?.a);
     if (a !== null) aByPlayer.set(tag, a);
   }
 
   const wpByPlayer = new Map<string, number>();
-  for (const s of parseSeries<{ wp: number | null; gp: number | null }>(gameBody)) {
+  for (const s of parseStatementSeries<{ wp: number | null; gp: number | null }>(game)) {
     const tag = s.tags.player ?? '';
     const wp = safeNumber(s.rows[0]?.wp);
     if (wp !== null) wpByPlayer.set(tag, wp);
@@ -57,12 +54,12 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
 
   const newestByPlayer = new Map<string, number>();
   let newestSeenAt: number | null = null;
-  for (const s of parseSeries<{ lu: number | null }>(summaryBody)) {
+  for (const s of parseStatementSeries<{ time: number; u: string | null }>(summary)) {
     const tag = s.tags.player ?? '';
-    const lu = safeNumber(s.rows[0]?.lu);
-    if (lu !== null) {
-      newestByPlayer.set(tag, lu);
-      if (newestSeenAt === null || lu > newestSeenAt) newestSeenAt = lu;
+    const seenAt = safeNumber(s.rows[0]?.time);
+    if (seenAt !== null) {
+      newestByPlayer.set(tag, seenAt);
+      if (newestSeenAt === null || seenAt > newestSeenAt) newestSeenAt = seenAt;
     }
   }
 
