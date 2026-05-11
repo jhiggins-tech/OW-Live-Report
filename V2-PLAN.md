@@ -160,23 +160,38 @@ Shared:
 - [ ] Theme tokens ported from `docs/assets/styles.css`
 - [ ] Skeleton loading states (live first paint will be 3–6s cold)
 
-## V2.1 parity checklist (deferred, must not be forgotten)
+## V2.1 parity checklist (shipped)
 
-- [ ] Settings page (snapshot hide/restore, browser-local persistence) — port from `docs/settings.html`
-- [ ] Team optimizer (1 tank / 2 DPS / 2 support, role-lock UI) — port `Search-OwReportBestTeamComposition` from `src/internal/AnalyticsTeam.ps1`
-- [ ] Wide-match heuristic — port `Get-OwReportWideGroupAssessment` (`AnalyticsTeam.ps1:605`) and `Get-OwReportDynamicWideMatchContext` (`Influx.ps1:332`)
+- [x] Settings page (snapshot hide/restore, browser-local persistence) — PR #12
+- [x] Team optimizer (1 tank / 2 DPS / 2 support, role-lock UI) — PR #19, ports `Search-OwReportBestTeamComposition` from `src/internal/AnalyticsTeam.ps1`
+- [x] Wide-match heuristic — PR #14, ports `Get-OwReportWideGroupAssessment` (`AnalyticsTeam.ps1:605`); banner on Overview + tie-break in the optimizer
+- [x] Trajectory narratives + warnings + forecast labels — PRs #18 (per-player TrajectoryPanel) + #21 (team Biggest Movers + roster pills)
+- [x] Hero meta context from OverFast API — PR #20 (pickrate/winrate columns + Δ vs meta on the hero leaderboard); CORS verified open on `overfast-api.tekrop.fr`
+- [x] Stale-cache fallback when live query fails — PR #16 (24h sessionStorage + StaleBanner on fetch failure)
+- [x] Wide-match / standard-queue badges in UI — PR #14
+- [x] Per-player notes badges (column 3 of `tracked-battletags.txt`) — PR #12 (pill-styled in `RosterGrid`)
+- [x] Per-player snapshot hiding (browser-local override) — PR #12
+- [x] Player-override config (hidden_heroes, locked_role) mirroring `team.sample.json` `player_overrides` — PR #17
+- [x] Full `team.sample.json` parity: site subtitle, `top_hero_count`, `request_delay_ms` surfaced as runtime config — PR #15
+- [x] Move runtime config out of `config/team.sample.json` / inlined constants into **environment variables + CI vars** — PR #15 (`docs/v2/data/runtime-config.json` + `.env.example` contract + `deploy-v2-linux.yml` GitHub Actions vars)
+- [x] Restored role-breakdown chart via hero→role derivation — PR #14
+
+## V2.2 deferred
+
+- [ ] Switch HashRouter → BrowserRouter with build-time per-player HTML stubs (drop hash URLs). See the BrowserRouter trade-off notes below.
 - [ ] History-weighted hero recommendations — port from `src/internal/AnalyticsCore.ps1`
-- [ ] Trajectory narratives + warnings + forecast labels ("likely climbing", etc.)
-- [ ] Hero meta context from OverFast API (when `include_hero_meta_context: true`)
-- [ ] Stale-cache fallback when live query fails (`fallback_to_stale_cache`)
-- [ ] Wide-match / standard-queue badges in UI
-- [ ] Per-player notes badges (column 3 of `tracked-battletags.txt`)
-- [ ] Per-player snapshot hiding (browser-local override)
-- [ ] Player-override config (hidden_heroes, locked_role) mirroring `team.sample.json` `player_overrides`
-- [ ] Full `team.sample.json` parity: site subtitle, `top_hero_count`, `request_delay_ms` surfaced as runtime config
-- [ ] Switch HashRouter → BrowserRouter with build-time per-player HTML stubs (drop hash URLs)
-- [ ] Move runtime config out of `config/team.sample.json` / inlined constants into **environment variables + CI vars**: `INFLUX_QUERY_URL`, `INFLUX_DATABASE`, `INFLUX_GAMEMODE`, `TEAM_NAME`, `TEAM_SUBTITLE`, `TOP_HERO_COUNT`, `REQUEST_DELAY_MS`, `LINK_TO_V1_URL`. Vite reads `VITE_*` at build time; non-secret values surface as `import.meta.env.VITE_*`. For values that should vary per-environment without a rebuild, write them into a build-time-generated `docs/v2/data/runtime-config.json` that the app fetches on boot. Document the full env-var contract in `web-v2/.env.example`.
-- [ ] Any remaining functions in `AnalyticsTeam.ps1` / `AnalyticsCore.ps1` not covered by MVP
+- [ ] Team Overview hero-pool vs OverFast meta pickrate overlay (follow-up to PR #20)
+- [ ] Trend-label feed into the optimizer's role-option scoring (the +trend-norm component; deferred from PR #19 to avoid N×3 query inflation)
+- [ ] Any remaining functions in `AnalyticsTeam.ps1` / `AnalyticsCore.ps1` not covered by MVP / V2.1
+
+### BrowserRouter trade-off notes (for V2.2)
+
+- Drops `#` from URLs (`/v2/#/players/melrose` → `/v2/players/melrose/`).
+- Build script must emit one `docs/v2/players/<slug>/index.html` per roster entry and a `docs/v2/404.html` for SPA fallback on unknown paths.
+- Vite `base` moves from `./` to `/v2/` (drop the portable-relative-paths setup).
+- Stale stubs need cleanup on roster removal — build step tracks "what existed last time".
+- Existing hash bookmarks need a small boot-time `location.hash` → path migration shim or they land on Overview.
+- Unlocks per-player `<title>`/`<meta>` so Slack/Discord link previews are no longer identical for every player.
 
 ## Critical files to reference (V1 → V2 port map)
 
