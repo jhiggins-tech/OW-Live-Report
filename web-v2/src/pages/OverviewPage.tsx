@@ -4,6 +4,7 @@ import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
 import StatCards from '../components/StatCards';
 import RosterGrid from '../components/RosterGrid';
+import WideMatchBanner from '../components/WideMatchBanner';
 import TeamKdaChart from '../components/charts/TeamKdaChart';
 import TeamWinRateChart from '../components/charts/TeamWinRateChart';
 import TeamRankChart from '../components/charts/TeamRankChart';
@@ -29,6 +30,8 @@ export default function OverviewPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <StatCards players={visible} />
+
+      <WideMatchBanner players={visible} />
 
       <section className="panel">
         <header className="section-head">
