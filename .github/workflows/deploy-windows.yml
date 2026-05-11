@@ -87,8 +87,19 @@ jobs:
         run: |
           .\publish-github-pages.ps1 -SourceDir .\output\latest -DocsDir .\docs
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs
+      - name: Commit refreshed docs/ back to main
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs
+          $staged = git diff --cached --name-only
+          if (-not $staged) {
+              Write-Host 'No docs/ changes to commit.'
+              exit 0
+          }
+          Write-Host 'Staged changes:'
+          Write-Host ($staged -join "`n")
+          git commit -m 'ci: refresh docs/ from latest build [skip ci]'
+          git push origin HEAD:main
