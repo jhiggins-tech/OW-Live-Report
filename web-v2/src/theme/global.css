@@ -348,10 +348,21 @@ button[aria-pressed='true'] {
 }
 .lineup-card-hero-row {
   display: grid;
-  grid-template-columns: 20px 1fr auto auto;
+  grid-template-columns: 20px 1fr 32px 40px 40px;
   gap: 10px;
   align-items: center;
   font-size: 0.85rem;
+}
+.lineup-card-hero-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.lineup-card-hero-header .lineup-card-hero-stat {
+  color: var(--muted);
 }
 .lineup-card-hero-name {
   overflow: hidden;
@@ -361,12 +372,10 @@ button[aria-pressed='true'] {
 .lineup-card-hero-stat {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  min-width: 36px;
   text-align: right;
 }
 .lineup-card-hero-pick {
   color: var(--sky);
-  min-width: 40px;
 }
 .lineup-card-score {
   font-size: 0.82rem;

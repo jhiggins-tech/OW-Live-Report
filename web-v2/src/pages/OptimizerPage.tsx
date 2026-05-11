@@ -30,6 +30,18 @@ function fmtPickrate(v: number | null): string {
   return v === null ? '—' : `${v.toFixed(0)}%`;
 }
 
+function HeroHeader() {
+  return (
+    <div className="lineup-card-hero-row lineup-card-hero-header">
+      <span aria-hidden="true" />
+      <span>Hero</span>
+      <span className="lineup-card-hero-stat" title="Games played">G</span>
+      <span className="lineup-card-hero-stat" title="Hero win rate">Win</span>
+      <span className="lineup-card-hero-stat lineup-card-hero-pick" title="Player pickrate within role">Pick</span>
+    </div>
+  );
+}
+
 function HeroRow({ hero, heroMeta }: { hero: PlayerHeroStat; heroMeta: HeroMeta | undefined }) {
   const entry = heroMeta?.byKey[hero.hero];
   const portrait = entry?.portrait;
@@ -42,6 +54,9 @@ function HeroRow({ hero, heroMeta }: { hero: PlayerHeroStat; heroMeta: HeroMeta 
         <span className="hero-portrait hero-portrait--empty" aria-hidden="true" />
       )}
       <span className="lineup-card-hero-name">{name}</span>
+      <span className="lineup-card-hero-stat" title="Games played">
+        {hero.gamesPlayed}
+      </span>
       <span className="lineup-card-hero-stat" title="Hero win rate">
         {hero.winRate === null ? '—' : `${hero.winRate.toFixed(0)}%`}
       </span>
@@ -109,7 +124,10 @@ function AssignmentCard({
         {heroes.length === 0 ? (
           <div className="lineup-card-heroes-empty">No recent games on this role.</div>
         ) : (
-          heroes.map((h) => <HeroRow key={h.hero} hero={h} heroMeta={heroMeta} />)
+          <>
+            <HeroHeader />
+            {heroes.map((h) => <HeroRow key={h.hero} hero={h} heroMeta={heroMeta} />)}
+          </>
         )}
       </div>
       <div className="lineup-card-score">
