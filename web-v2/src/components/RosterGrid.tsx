@@ -17,7 +17,16 @@ export default function RosterGrid({ players }: { players: RosterPlayer[] }) {
         >
           <div className="name">{p.display}</div>
           <div className="tag">{p.battleTag}</div>
-          {p.notes ? <div className="notes">{p.notes}</div> : null}
+          {p.notes ? (
+            <div className="notes">
+              {p.notes
+                .split(/[,\s]+/)
+                .filter(Boolean)
+                .map((token) => (
+                  <span key={token} className="note-badge">{token}</span>
+                ))}
+            </div>
+          ) : null}
         </Link>
       ))}
     </div>

@@ -7,6 +7,7 @@ const LINK_TO_V1 = import.meta.env.VITE_LINK_TO_V1_URL ?? '../';
 export default function SiteHeader() {
   const location = useLocation();
   const isOverview = location.pathname === '/' || location.pathname === '';
+  const isSettings = location.pathname === '/settings';
   return (
     <header className="hero-shell">
       <p className="eyebrow">OW Live Report · V2</p>
@@ -15,9 +16,12 @@ export default function SiteHeader() {
         {!isOverview ? (
           <Link to="/" style={{ fontSize: '0.95rem' }}>← Team overview</Link>
         ) : null}
-        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--muted)' }}>
-          <a href={LINK_TO_V1}>Back to V1</a>
-        </span>
+        <nav style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: '0.85rem' }}>
+          {!isSettings ? (
+            <Link to="/settings" style={{ color: 'var(--muted)' }}>Settings</Link>
+          ) : null}
+          <a href={LINK_TO_V1} style={{ color: 'var(--muted)' }}>Back to V1</a>
+        </nav>
       </div>
       <p className="lede">{TEAM_SUBTITLE}</p>
     </header>
