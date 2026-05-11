@@ -318,6 +318,7 @@ button[aria-pressed='true'] {
 }
 .lineup-card-rank {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   gap: 2px;
   flex: 0 0 auto;
