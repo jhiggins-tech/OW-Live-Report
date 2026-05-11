@@ -12,23 +12,31 @@ in scope, what's out, and the open questions.
 
 ## V2.2 PRDs
 
-All sized to roughly one PR each. Status is currently "Proposed" on all of
-them — none have been picked up.
+All sized to roughly one PR each. Status is currently "Proposed" except
+where noted.
 
 - **[v2.2-hash-url-migration.md](./v2.2-hash-url-migration.md)** — drop the
   `#` from V2 URLs by moving HashRouter → BrowserRouter and emitting one
-  HTML stub per route at build time. Biggest of the four; touches routing,
+  HTML stub per route at build time. Biggest of the five; touches routing,
   build, and CI.
 - **[v2.2-hero-pool-meta-overlay.md](./v2.2-hero-pool-meta-overlay.md)** —
   layer OverFast community pickrate onto the Overview team hero pool so
   you can see at a glance whether the team is on-meta or running niche
   picks. Small follow-up to PR #20.
-- **[v2.2-hero-portraits.md](./v2.2-hero-portraits.md)** — show OverFast
-  hero portraits next to hero names on the player leaderboard (and
-  optionally the team hero pool). Cosmetic, ~½ PR.
+- **[v2.2-hero-portraits.md](./v2.2-hero-portraits.md)** — *Shipped in
+  [PR #24](https://github.com/jhiggins-tech/OW-Live-Report/pull/24).* Hero
+  portraits beside hero names on the player leaderboard and the team
+  hero-pool axis.
+- **[v2.2-optimizer-card-enrichment.md](./v2.2-optimizer-card-enrichment.md)**
+  — enrich Optimizer suggested-lineup cards with player avatar, rank
+  insignia (from OverFast `/players/{id}/summary`), and a top-5 hero list
+  for the assigned role with portraits + per-hero win % and player
+  pickrate. ~1 PR, ~200 LOC.
 - **[v2.2-overfast-player-endpoints.md](./v2.2-overfast-player-endpoints.md)**
   — evaluate `/players/{id}/stats/*` for live (non-cached) data. Current
   recommendation: **skip** unless a concrete real-time use case shows up.
+  (Note: the optimizer-card PRD above uses `/players/{id}/summary`, a
+  different endpoint than the stats ones, which it explicitly justifies.)
 
 ## Conventions
 
