@@ -3,7 +3,8 @@ import { heroRole } from '../../../heroCatalog';
 import { heroKey } from '../../../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { quoteValue } from '../../_shared';
-import { GAMEMODE, TIME_WINDOWS } from '../_constants';
+import { TIME_WINDOWS } from '../_constants';
+import { getGamemode } from '../_constants';
 import type { Role, RoleBreakdownEntry } from '../../../../types/models';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
@@ -14,9 +15,9 @@ export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBr
   const window = TIME_WINDOWS.playerSeason;
   const player = quoteValue(playerId);
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "hero"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "hero"`;
-  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "hero"`;
+  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "hero"`;
+  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "hero"`;
+  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "hero"`;
 
   const [combat, assists, game] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ]);
 

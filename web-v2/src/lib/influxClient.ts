@@ -1,7 +1,5 @@
 import type { InfluxResponse, InfluxSeries, InfluxStatementResult, ParsedSeries } from '../types/influx';
-
-const QUERY_URL = import.meta.env.VITE_INFLUX_QUERY_URL ?? 'https://owstats.jhiggins.tech/query';
-const DATABASE = import.meta.env.VITE_INFLUX_DATABASE ?? 'ow_stats_telegraf';
+import { getRuntimeConfig } from './runtimeConfig';
 
 const MAX_CONCURRENT = 4;
 const SESSION_PREFIX = 'owr-v2:influx:';
@@ -70,10 +68,11 @@ export async function runInfluxQuery(query: string, options?: { signal?: AbortSi
 
   await acquire();
   try {
-    const params = new URLSearchParams({ db: DATABASE, q: query, epoch: 'ms' });
+    const { queryUrl, database } = getRuntimeConfig().influx;
+    const params = new URLSearchParams({ db: database, q: query, epoch: 'ms' });
     const init: RequestInit = { method: 'GET', headers: { Accept: 'application/json' } };
     if (options?.signal) init.signal = options.signal;
-    const res = await fetch(`${QUERY_URL}?${params.toString()}`, init);
+    const res = await fetch(`${queryUrl}?${params.toString()}`, init);
     if (!res.ok) {
       throw new InfluxQueryError(`HTTP ${res.status} from InfluxDB`, query, res.status);
     }
@@ -145,5 +144,3 @@ function toParsed<TRow extends Record<string, number | string | null>>(series: I
   };
 }
 
-export const INFLUX_QUERY_URL = QUERY_URL;
-export const INFLUX_DATABASE = DATABASE;

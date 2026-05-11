@@ -2,7 +2,8 @@ import { parseSeries, runInfluxQuery } from '../../../influxClient';
 import { heroKey } from '../../../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { quoteValue } from '../../_shared';
-import { BUCKETS, GAMEMODE, TIME_WINDOWS } from '../_constants';
+import { BUCKETS, TIME_WINDOWS } from '../_constants';
+import { getGamemode } from '../_constants';
 
 export interface PlayerHeroPerfPoint {
   time: number;
@@ -14,8 +15,8 @@ export async function fetchPlayerHeroPerf(playerId: string): Promise<PlayerHeroP
   const bucket = BUCKETS.heroPerf;
   const player = quoteValue(playerId);
 
-  const combatQ = `SELECT mean("eliminations") AS e, mean("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
-  const assistsQ = `SELECT mean("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
+  const combatQ = `SELECT mean("eliminations") AS e, mean("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
+  const assistsQ = `SELECT mean("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
   const [c, a] = await Promise.all([runInfluxQuery(combatQ), runInfluxQuery(assistsQ)]);
 
   const combat = new Map<string, Map<number, { e: number | null; d: number | null }>>();

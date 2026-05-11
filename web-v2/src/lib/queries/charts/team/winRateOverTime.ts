@@ -1,7 +1,8 @@
 import { parseSeries, runInfluxQuery } from '../../../influxClient';
 import { safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
-import { BUCKETS, GAMEMODE, TIME_WINDOWS } from '../_constants';
+import { BUCKETS, TIME_WINDOWS } from '../_constants';
+import { getGamemode } from '../_constants';
 import type { RosterPlayer } from '../../../../types/models';
 
 export interface TeamWinRatePoint {
@@ -14,7 +15,7 @@ export async function fetchTeamWinRateOverTime(players: RosterPlayer[]): Promise
   const regex = buildPlayerRegex(players);
   const window = TIME_WINDOWS.teamSeason;
   const bucket = BUCKETS.teamWinRate;
-  const q = `SELECT mean("win_percentage") AS wp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
+  const q = `SELECT mean("win_percentage") AS wp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
   const body = await runInfluxQuery(q);
 
   const buckets = new Map<number, number[]>();

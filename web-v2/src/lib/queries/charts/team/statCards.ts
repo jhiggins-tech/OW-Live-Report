@@ -1,7 +1,8 @@
 import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
-import { GAMEMODE, TIME_WINDOWS } from '../_constants';
+import { TIME_WINDOWS } from '../_constants';
+import { getGamemode } from '../_constants';
 import type { RosterPlayer } from '../../../../types/models';
 
 export interface TeamStatCards {
@@ -19,9 +20,9 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   const regex = buildPlayerRegex(players);
   const window = TIME_WINDOWS.statCards;
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
-  const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
+  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
+  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
+  const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
   // last(username) is the cheapest way to recover the per-player row time
   // from player_summary (there is no last_updated_at field on the schema).
   const summaryQ = `SELECT last("username") AS u FROM "player_summary" WHERE "player" =~ /${regex}/ GROUP BY "player"`;

@@ -1,7 +1,8 @@
 import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
-import { GAMEMODE, TIME_WINDOWS } from '../_constants';
+import { TIME_WINDOWS } from '../_constants';
+import { getGamemode } from '../_constants';
 import type { PlayerStatPoint, RosterPlayer } from '../../../../types/models';
 
 export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<PlayerStatPoint[]> {
@@ -9,9 +10,9 @@ export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<Playe
   const regex = buildPlayerRegex(players);
   const window = TIME_WINDOWS.scatter;
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
-  const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY "player"`;
+  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
+  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
+  const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
 
   const [combat, assists, game] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ]);
 
