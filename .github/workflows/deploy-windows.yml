@@ -82,6 +82,11 @@ jobs:
           }
           Write-Host "::endgroup::"
 
+      - name: Stage site into docs/ (PowerShell)
+        shell: pwsh
+        run: |
+          .\publish-github-pages.ps1 -SourceDir .\output\latest -DocsDir .\docs
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
