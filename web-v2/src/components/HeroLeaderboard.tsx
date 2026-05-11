@@ -61,9 +61,26 @@ export default function HeroLeaderboard({
           const metaEntry = meta.data?.byKey[row.hero];
           const metaWin = metaEntry?.winrate ?? null;
           const delta = row.winRate !== null && metaWin !== null ? row.winRate - metaWin : null;
+          const heroName = metaEntry?.name ?? row.prettyName;
           return (
             <tr key={row.hero} style={{ opacity: hidden ? 0.4 : 1 }}>
-              <td>{metaEntry?.name ?? row.prettyName}</td>
+              <td>
+                <span className="hero-cell">
+                  {metaEntry?.portrait ? (
+                    <img
+                      className="hero-portrait"
+                      src={metaEntry.portrait}
+                      alt=""
+                      loading="lazy"
+                      width={24}
+                      height={24}
+                    />
+                  ) : (
+                    <span className="hero-portrait hero-portrait--empty" aria-hidden="true" />
+                  )}
+                  <span>{heroName}</span>
+                </span>
+              </td>
               <td>{row.gamesPlayed}</td>
               <td>{row.winRate === null ? '—' : `${row.winRate.toFixed(1)}%`}</td>
               <td>{metaWin === null ? '—' : `${metaWin.toFixed(1)}%`}</td>
