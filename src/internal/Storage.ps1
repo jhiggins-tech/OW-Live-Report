@@ -110,5 +110,5 @@ function Get-OwReportRunRecordsFromStorage {
         $runRecords += Read-OwReportJsonFile -Path $file.FullName
     }
 
-    return @($runRecords | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+    return @($runRecords | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') })
 }

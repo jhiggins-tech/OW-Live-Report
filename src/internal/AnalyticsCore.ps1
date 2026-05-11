@@ -751,7 +751,7 @@ function Get-OwReportWindowedSeries {
         return @()
     }
 
-    $ordered = @($Series | Where-Object { $null -ne $_.value } | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+    $ordered = @($Series | Where-Object { $null -ne $_.value } | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') })
     if ($ordered.Count -eq 0) {
         return @()
     }
@@ -788,7 +788,7 @@ function Get-TimeSeriesTrend {
         }
     }
 
-    $ordered = @($Series | Where-Object { $null -ne $_.value } | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+    $ordered = @($Series | Where-Object { $null -ne $_.value } | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') })
     if ($ordered.Count -lt 2) {
         return [ordered]@{
             direction = 'flat'
@@ -848,7 +848,7 @@ function Get-OwReportMetricSeries {
     )
 
     $series = @()
-    foreach ($snapshot in @($Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })) {
+    foreach ($snapshot in @($Snapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })) {
         $value = Get-OwReportObjectValue -Object $snapshot -Path $Path
         $series += (New-OwReportSeriesPoint -Timestamp $snapshot.captured_at -Value $value)
     }
@@ -871,7 +871,7 @@ function Get-OwReportHeroSeries {
     $seriesList = @()
     foreach ($heroKey in $HeroKeys) {
         $heroPoints = @()
-        foreach ($snapshot in @($Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })) {
+        foreach ($snapshot in @($Snapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })) {
             $matches = @($snapshot.heroes | Where-Object { $_.hero_key -eq $heroKey })
             $hero = $(if ($matches.Count -gt 0) { $matches[0] } else { $null })
             $value = $null
