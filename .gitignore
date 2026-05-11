@@ -2,6 +2,8 @@ cache/
 data/
 !docs/data/
 !docs/data/site-model.json
+!docs/v2/data/
+!docs/v2/data/roster.json
 logs/
 output/
 tmp/
