@@ -6,7 +6,9 @@ export const TIME_WINDOWS = {
   scatter: '7d',
   teamSeason: '90d',
   playerSeason: '90d',
-  heroLatest: '90d',
+  // Hero pool: 30d strikes a balance between current-meta relevance and
+  // query cost (90d ~2.15s vs 30d ~1.77s vs 14d ~0.6s in profiling).
+  heroLatest: '30d',
 } as const;
 
 export const BUCKETS = {
