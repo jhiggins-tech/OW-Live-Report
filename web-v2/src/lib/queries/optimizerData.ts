@@ -5,7 +5,7 @@
 
 import { parseStatementSeries, runInfluxMultiQuery } from '../influxClient';
 import { heroRole } from '../heroCatalog';
-import { heroKey } from '../normalize/heroKey';
+import { heroKey, prettyHeroName } from '../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../normalize/kda';
 import { rankOrdinal, rankLabelFromOrdinal } from '../normalize/rankOrdinal';
 import { buildPlayerRegex } from './_shared';
@@ -13,6 +13,7 @@ import { getGamemode } from './charts/_constants';
 import type { Role, RosterPlayer } from '../../types/models';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
+const TOP_HERO_LIMIT = 5;
 
 export interface PlayerRoleStats {
   role: Role;
@@ -24,9 +25,23 @@ export interface PlayerRoleStats {
   rankLabel: string;
 }
 
+export interface PlayerHeroStat {
+  hero: string;
+  prettyName: string;
+  gamesPlayed: number;
+  timePlayedSeconds: number;
+  winRate: number | null;
+  kda: number | null;
+  // Player-local pickrate: share of this player's time/games spent on this
+  // hero within the role (0-100), denominator = role total time, fallback
+  // to role total games if time data is missing.
+  pickRate: number | null;
+}
+
 export interface PlayerOptimizerData {
   player: RosterPlayer;
   byRole: Record<Role, PlayerRoleStats>;
+  heroesByRole: Record<Role, PlayerHeroStat[]>;
   bestRole: Role | null;
 }
 
@@ -119,6 +134,11 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
       damage: blankRoleStats('damage'),
       support: blankRoleStats('support'),
     };
+    const heroesByRole: Record<Role, PlayerHeroStat[]> = {
+      tank: [],
+      damage: [],
+      support: [],
+    };
 
     // Roll up per-hero stats into per-role bins, weighted by games_played.
     const heroes = heroData.get(p.playerId);
@@ -145,11 +165,38 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
             kdaNum += heroKdaValue * gp;
             kdaDen += gp;
           }
+          heroesByRole[role].push({
+            hero: h,
+            prettyName: prettyHeroName(h),
+            gamesPlayed: gp,
+            timePlayedSeconds: stats.tp ?? 0,
+            winRate: stats.wp ?? null,
+            kda: heroKdaValue,
+            pickRate: null,
+          });
         }
         byRole[role].gamesPlayed = gamesPlayed;
         byRole[role].timePlayedSeconds = timePlayed;
         byRole[role].winRate = winDen > 0 ? winNum / winDen : null;
         byRole[role].kda = kdaDen > 0 ? kdaNum / kdaDen : null;
+
+        // Compute pickrate against the role's denominator and pick top N.
+        const roleTime = timePlayed;
+        const roleGames = gamesPlayed;
+        for (const entry of heroesByRole[role]) {
+          if (roleTime > 0) {
+            entry.pickRate = (entry.timePlayedSeconds / roleTime) * 100;
+          } else if (roleGames > 0) {
+            entry.pickRate = (entry.gamesPlayed / roleGames) * 100;
+          }
+        }
+        heroesByRole[role].sort((a, b) => {
+          if (b.timePlayedSeconds !== a.timePlayedSeconds) {
+            return b.timePlayedSeconds - a.timePlayedSeconds;
+          }
+          return b.gamesPlayed - a.gamesPlayed;
+        });
+        heroesByRole[role] = heroesByRole[role].slice(0, TOP_HERO_LIMIT);
       }
     }
 
@@ -169,6 +216,6 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
       }
     }
 
-    return { player: p, byRole, bestRole };
+    return { player: p, byRole, heroesByRole, bestRole };
   });
 }

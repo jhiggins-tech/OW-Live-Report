@@ -262,3 +262,111 @@ button[aria-pressed='true'] {
   flex: 0 0 auto;
 }
 .hero-portrait--empty { display: inline-block; }
+
+.lineup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lineup-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lineup-card-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.lineup-card-avatar--empty { display: inline-block; }
+.lineup-card-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.lineup-card-name {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+.lineup-card-name:hover { text-decoration: underline; }
+.lineup-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lineup-card-locked {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.lineup-card .role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lineup-card .role-pill img {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0.95);
+}
+.lineup-card-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.lineup-card-rank-icon { height: 32px; width: auto; display: block; }
+.lineup-card-tier-icon { height: 24px; width: auto; display: block; }
+.lineup-card-stats {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.lineup-card-explanation {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.lineup-card-heroes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.lineup-card-heroes-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.lineup-card-hero-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.lineup-card-hero-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineup-card-hero-stat {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
+}
+.lineup-card-hero-pick {
+  color: var(--sky);
+  min-width: 40px;
+}
+.lineup-card-score {
+  font-size: 0.82rem;
+}
