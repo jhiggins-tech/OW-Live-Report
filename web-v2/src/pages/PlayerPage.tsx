@@ -10,6 +10,7 @@ import RoleBreakdown from '../components/charts/RoleBreakdown';
 import HeroUsageStacked from '../components/charts/HeroUsageStacked';
 import HeroPerfLines from '../components/charts/HeroPerfLines';
 import HeroLeaderboard from '../components/HeroLeaderboard';
+import TrajectoryPanel from '../components/TrajectoryPanel';
 
 function useHiddenHeroes(slug: string, adminDefaults: readonly string[] | undefined): {
   hidden: Set<string>;
@@ -103,6 +104,8 @@ export default function PlayerPage() {
           </div>
         </div>
       </section>
+
+      <TrajectoryPanel playerId={player.playerId} displayName={player.display} />
 
       <section className="panel">
         <header className="section-head">
