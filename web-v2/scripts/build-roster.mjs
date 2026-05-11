@@ -35,6 +35,9 @@ function parseLine(line) {
   if (!battleTag || !battleTag.includes('#')) return null;
   return {
     battleTag,
+    // InfluxDB stores player IDs with '#' replaced by '-' (V1 parity:
+    // Common.ps1:6 ConvertTo-NormalizedBattleTag).
+    playerId: battleTag.replace(/#/g, '-'),
     display: display || battleTag.split('#')[0],
     notes,
     slug: slug(display || battleTag.split('#')[0]),

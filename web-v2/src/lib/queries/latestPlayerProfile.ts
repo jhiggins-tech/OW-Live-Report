@@ -10,7 +10,7 @@ const PROFILE_FIELDS = [
 ] as const;
 
 export interface PlayerProfile {
-  battleTag: string;
+  playerId: string;
   avatar: string | null;
   namecard: string | null;
   endorsement: number | null;
@@ -18,14 +18,14 @@ export interface PlayerProfile {
   lastUpdatedAt: number | null;
 }
 
-export async function fetchLatestPlayerProfile(battleTag: string): Promise<PlayerProfile | null> {
-  const q = `SELECT ${lastSelectClause(PROFILE_FIELDS)} FROM "player_summary" WHERE "player"='${quoteValue(battleTag)}'`;
+export async function fetchLatestPlayerProfile(playerId: string): Promise<PlayerProfile | null> {
+  const q = `SELECT ${lastSelectClause(PROFILE_FIELDS)} FROM "player_summary" WHERE "player"='${quoteValue(playerId)}'`;
   const body = await runInfluxQuery(q);
   const series = parseSeries<Record<string, number | string | null>>(body);
   const first = series[0]?.rows?.[0];
   if (!first) return null;
   return {
-    battleTag,
+    playerId,
     avatar: (first.avatar as string | null) ?? null,
     namecard: (first.namecard as string | null) ?? null,
     endorsement: typeof first.endorsement === 'number' ? first.endorsement : null,

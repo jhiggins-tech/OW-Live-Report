@@ -5,10 +5,10 @@ import { rankLabelFromOrdinal } from '../../lib/normalize/rankOrdinal';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
-export default function PlayerRankTrend({ battleTag }: { battleTag: string }) {
+export default function PlayerRankTrend({ playerId }: { playerId: string }) {
   const query = useQuery({
-    queryKey: ['player', 'rankTrend', battleTag],
-    queryFn: () => fetchPlayerRankTrend(battleTag),
+    queryKey: ['player', 'rankTrend', playerId],
+    queryFn: () => fetchPlayerRankTrend(playerId),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load rank trend.</div>;

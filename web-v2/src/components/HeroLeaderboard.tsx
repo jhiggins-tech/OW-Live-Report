@@ -8,17 +8,17 @@ function fmtHours(seconds: number): string {
 }
 
 export default function HeroLeaderboard({
-  battleTag,
+  playerId,
   hiddenHeroes,
   onToggle,
 }: {
-  battleTag: string;
+  playerId: string;
   hiddenHeroes: Set<string>;
   onToggle: (hero: string) => void;
 }) {
   const query = useQuery({
-    queryKey: ['player', 'heroLeaderboard', battleTag],
-    queryFn: () => fetchPlayerHeroLeaderboard(battleTag),
+    queryKey: ['player', 'heroLeaderboard', playerId],
+    queryFn: () => fetchPlayerHeroLeaderboard(playerId),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load hero leaderboard.</div>;

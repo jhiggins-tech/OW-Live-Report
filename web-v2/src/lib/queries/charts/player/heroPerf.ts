@@ -9,10 +9,10 @@ export interface PlayerHeroPerfPoint {
   byHero: Record<string, number | null>; // hero key -> KDA in bucket
 }
 
-export async function fetchPlayerHeroPerf(battleTag: string): Promise<PlayerHeroPerfPoint[]> {
+export async function fetchPlayerHeroPerf(playerId: string): Promise<PlayerHeroPerfPoint[]> {
   const window = TIME_WINDOWS.playerSeason;
   const bucket = BUCKETS.heroPerf;
-  const player = quoteValue(battleTag);
+  const player = quoteValue(playerId);
 
   const combatQ = `SELECT mean("eliminations") AS e, mean("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
   const assistsQ = `SELECT mean("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;

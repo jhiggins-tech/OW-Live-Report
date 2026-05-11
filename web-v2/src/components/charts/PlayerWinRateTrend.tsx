@@ -4,10 +4,10 @@ import { fetchPlayerWinRateTrend } from '../../lib/queries/charts/player/winRate
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
-export default function PlayerWinRateTrend({ battleTag }: { battleTag: string }) {
+export default function PlayerWinRateTrend({ playerId }: { playerId: string }) {
   const query = useQuery({
-    queryKey: ['player', 'winRateTrend', battleTag],
-    queryFn: () => fetchPlayerWinRateTrend(battleTag),
+    queryKey: ['player', 'winRateTrend', playerId],
+    queryFn: () => fetchPlayerWinRateTrend(playerId),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load win-rate trend.</div>;

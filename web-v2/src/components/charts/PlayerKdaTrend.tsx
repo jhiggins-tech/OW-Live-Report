@@ -4,10 +4,10 @@ import { fetchPlayerKdaTrend } from '../../lib/queries/charts/player/kdaTrend';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
-export default function PlayerKdaTrend({ battleTag }: { battleTag: string }) {
+export default function PlayerKdaTrend({ playerId }: { playerId: string }) {
   const query = useQuery({
-    queryKey: ['player', 'kdaTrend', battleTag],
-    queryFn: () => fetchPlayerKdaTrend(battleTag),
+    queryKey: ['player', 'kdaTrend', playerId],
+    queryFn: () => fetchPlayerKdaTrend(playerId),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load KDA trend.</div>;
