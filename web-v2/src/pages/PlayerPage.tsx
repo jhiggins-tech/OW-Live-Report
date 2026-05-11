@@ -6,6 +6,7 @@ import { fetchLatestPlayerProfile } from '../lib/queries/latestPlayerProfile';
 import PlayerRankTrend from '../components/charts/PlayerRankTrend';
 import PlayerKdaTrend from '../components/charts/PlayerKdaTrend';
 import PlayerWinRateTrend from '../components/charts/PlayerWinRateTrend';
+import RoleBreakdown from '../components/charts/RoleBreakdown';
 import HeroUsageStacked from '../components/charts/HeroUsageStacked';
 import HeroPerfLines from '../components/charts/HeroPerfLines';
 import HeroLeaderboard from '../components/HeroLeaderboard';
@@ -106,6 +107,14 @@ export default function PlayerPage() {
           <PlayerWinRateTrend playerId={player.playerId} />
         </section>
       </div>
+
+      <section className="panel">
+        <header className="section-head">
+          <h2>Role breakdown</h2>
+          <p>Aggregated from per-hero stats via hero→role catalog, last 90 days</p>
+        </header>
+        <RoleBreakdown playerId={player.playerId} />
+      </section>
 
       <section className="panel">
         <header className="section-head">
