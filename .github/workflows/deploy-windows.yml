@@ -5,6 +5,9 @@ on:
     branches:
       - main  # or your default branch
 
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: windows-latest
@@ -21,7 +24,63 @@ jobs:
       - name: Build site (PowerShell)
         shell: pwsh
         run: |
-          .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host "::group::Environment"
+          Write-Host ("PowerShell: {0}" -f $PSVersionTable.PSVersion)
+          Write-Host ("PWD: {0}" -f (Get-Location).Path)
+          Write-Host "::endgroup::"
+
+          Write-Host "::group::Repo layout"
+          Get-ChildItem -Force | Select-Object Mode, LastWriteTime, Length, Name | Format-Table | Out-String | Write-Host
+          Write-Host "::endgroup::"
+
+          try {
+              .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed -Verbose
+          }
+          catch {
+              Write-Host "::error::Build failed: $($_.Exception.Message)"
+              Write-Host "::group::Exception detail"
+              $_ | Format-List -Force * | Out-String | Write-Host
+              if ($_.InvocationInfo) {
+                  Write-Host "InvocationInfo:"
+                  $_.InvocationInfo | Format-List -Force ScriptName, ScriptLineNumber, OffsetInLine, Line, PositionMessage, MyCommand | Out-String | Write-Host
+              }
+              if ($_.ScriptStackTrace) {
+                  Write-Host "ScriptStackTrace:"
+                  Write-Host $_.ScriptStackTrace
+              }
+              $inner = $_.Exception.InnerException
+              $depth = 0
+              while ($inner -and $depth -lt 5) {
+                  Write-Host ("InnerException [depth={0}] ({1}):" -f $depth, $inner.GetType().FullName)
+                  $inner | Format-List -Force * | Out-String | Write-Host
+                  $inner = $inner.InnerException
+                  $depth += 1
+              }
+              Write-Host "::endgroup::"
+
+              Write-Host "::group::Logs directory after failure"
+              if (Test-Path logs) {
+                  Get-ChildItem logs -Recurse -File | Select-Object FullName, Length, LastWriteTime | Format-Table | Out-String | Write-Host
+                  Get-ChildItem logs -Recurse -File | Sort-Object LastWriteTime | Select-Object -Last 3 | ForEach-Object {
+                      Write-Host ("--- tail of {0} ---" -f $_.FullName)
+                      Get-Content -LiteralPath $_.FullName -Tail 80 | ForEach-Object { Write-Host $_ }
+                  }
+              } else {
+                  Write-Host "logs/ does not exist"
+              }
+              Write-Host "::endgroup::"
+              throw
+          }
+
+          Write-Host "::group::docs/ after build"
+          if (Test-Path docs) {
+              Get-ChildItem docs -Recurse -File | Select-Object FullName, Length | Format-Table | Out-String | Write-Host
+          } else {
+              Write-Host "docs/ does not exist"
+          }
+          Write-Host "::endgroup::"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4

@@ -15,7 +15,7 @@ function Get-HeroRecommendationsFromSnapshots {
         }
     }
 
-    $latestSnapshot = @($Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })[-1]
+    $latestSnapshot = @($Snapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })[-1]
     $preferredRole = $latestSnapshot.normalized.preferred_role
     $heroKeys = @($latestSnapshot.heroes | Sort-Object time_played_seconds -Descending | ForEach-Object { $_.hero_key })
     $comfort = @()
@@ -209,7 +209,7 @@ function Get-PlayerAnalyticsFromSnapshots {
     )
 
     $orderedSnapshots = @(
-        $Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' } | ForEach-Object {
+        $Snapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') } | ForEach-Object {
             $snapshot = $_
             $rankSummary = Get-OwReportObjectValue -Object $snapshot -Path @('ranks')
             if ($null -ne $rankSummary) {
@@ -943,18 +943,18 @@ function Get-OwReportTeamAnalytics {
 
     $allSnapshots = @()
     if ($PSBoundParameters.ContainsKey('Snapshots')) {
-        $allSnapshots = @($Snapshots | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })
+        $allSnapshots = @($Snapshots | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })
     }
     elseif ($null -ne $Storage) {
-        $allSnapshots = @((Get-OwReportSnapshotsFromStorage -Storage $Storage) | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' })
+        $allSnapshots = @((Get-OwReportSnapshotsFromStorage -Storage $Storage) | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') })
     }
 
     $allRuns = @()
     if ($PSBoundParameters.ContainsKey('RunRecords')) {
-        $allRuns = @($RunRecords | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+        $allRuns = @($RunRecords | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') })
     }
     elseif ($null -ne $Storage) {
-        $allRuns = @((Get-OwReportRunRecordsFromStorage -Storage $Storage) | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' })
+        $allRuns = @((Get-OwReportRunRecordsFromStorage -Storage $Storage) | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') })
     }
 
     $latestAvailableRun = $(if ($allRuns.Count -gt 0) { $allRuns[-1] } else { $null })
@@ -970,7 +970,7 @@ function Get-OwReportTeamAnalytics {
         $playerSnapshots = @(
             $allSnapshots |
                 Where-Object { $_.player_slug -eq $player.slug } |
-                Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '' } |
+                Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('captured_at') -Default '') } |
                 ForEach-Object { Apply-OwReportPlayerFiltersToSnapshot -Snapshot $_ -PlayerConfig $player }
         )
         if ($playerSnapshots.Count -eq 0) {
