@@ -1,0 +1,30 @@
+name: Windows Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main  # or your default branch
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PowerShell
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Build site (PowerShell)
+        shell: pwsh
+        run: |
+          .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs
