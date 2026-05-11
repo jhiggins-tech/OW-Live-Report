@@ -6,10 +6,10 @@ import { fetchPlayerHeroUsage } from '../../lib/queries/charts/player/heroUsage'
 const COLORS = ['#59c2ff', '#41d8b7', '#ffb84f', '#ff7f73', '#a78bfa', '#f472b6', '#34d399', '#fbbf24'];
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
-export default function HeroUsageStacked({ battleTag, hiddenHeroes }: { battleTag: string; hiddenHeroes: Set<string> }) {
+export default function HeroUsageStacked({ playerId, hiddenHeroes }: { playerId: string; hiddenHeroes: Set<string> }) {
   const query = useQuery({
-    queryKey: ['player', 'heroUsage', battleTag],
-    queryFn: () => fetchPlayerHeroUsage(battleTag),
+    queryKey: ['player', 'heroUsage', playerId],
+    queryFn: () => fetchPlayerHeroUsage(playerId),
   });
 
   const data = useMemo(() => {

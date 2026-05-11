@@ -6,7 +6,6 @@ import { fetchLatestPlayerProfile } from '../lib/queries/latestPlayerProfile';
 import PlayerRankTrend from '../components/charts/PlayerRankTrend';
 import PlayerKdaTrend from '../components/charts/PlayerKdaTrend';
 import PlayerWinRateTrend from '../components/charts/PlayerWinRateTrend';
-import RoleBreakdown from '../components/charts/RoleBreakdown';
 import HeroUsageStacked from '../components/charts/HeroUsageStacked';
 import HeroPerfLines from '../components/charts/HeroPerfLines';
 import HeroLeaderboard from '../components/HeroLeaderboard';
@@ -50,8 +49,8 @@ export default function PlayerPage() {
   const roster = useRoster();
   const player = useMemo(() => roster.data?.players.find((p) => p.slug === slug), [roster.data, slug]);
   const profile = useQuery({
-    queryKey: ['player', 'profile', player?.battleTag ?? ''],
-    queryFn: () => fetchLatestPlayerProfile(player!.battleTag),
+    queryKey: ['player', 'profile', player?.playerId ?? ''],
+    queryFn: () => fetchLatestPlayerProfile(player!.playerId),
     enabled: !!player,
   });
   const { hidden, toggle } = useHiddenHeroes(slug ?? '');
@@ -94,34 +93,26 @@ export default function PlayerPage() {
           <h2>Rank trend</h2>
           <p>Per role, last 90 days</p>
         </header>
-        <PlayerRankTrend battleTag={player.battleTag} />
+        <PlayerRankTrend playerId={player.playerId} />
       </section>
 
       <div className="grid cols-2">
         <section className="panel">
           <header className="section-head"><h2>KDA</h2><p>Daily</p></header>
-          <PlayerKdaTrend battleTag={player.battleTag} />
+          <PlayerKdaTrend playerId={player.playerId} />
         </section>
         <section className="panel">
           <header className="section-head"><h2>Win rate</h2><p>Daily</p></header>
-          <PlayerWinRateTrend battleTag={player.battleTag} />
+          <PlayerWinRateTrend playerId={player.playerId} />
         </section>
       </div>
-
-      <section className="panel">
-        <header className="section-head">
-          <h2>Role breakdown</h2>
-          <p>Latest snapshot per role</p>
-        </header>
-        <RoleBreakdown battleTag={player.battleTag} />
-      </section>
 
       <section className="panel">
         <header className="section-head">
           <h2>Hero usage</h2>
           <p>Weekly playtime, top heroes</p>
         </header>
-        <HeroUsageStacked battleTag={player.battleTag} hiddenHeroes={hidden} />
+        <HeroUsageStacked playerId={player.playerId} hiddenHeroes={hidden} />
       </section>
 
       <section className="panel">
@@ -129,7 +120,7 @@ export default function PlayerPage() {
           <h2>Hero performance</h2>
           <p>Weekly KDA per hero</p>
         </header>
-        <HeroPerfLines battleTag={player.battleTag} hiddenHeroes={hidden} />
+        <HeroPerfLines playerId={player.playerId} hiddenHeroes={hidden} />
       </section>
 
       <section className="panel">
@@ -137,7 +128,7 @@ export default function PlayerPage() {
           <h2>Hero leaderboard</h2>
           <p>1-game 100%-WR outliers filtered. Toggle per-hero visibility.</p>
         </header>
-        <HeroLeaderboard battleTag={player.battleTag} hiddenHeroes={hidden} onToggle={toggle} />
+        <HeroLeaderboard playerId={player.playerId} hiddenHeroes={hidden} onToggle={toggle} />
       </section>
     </div>
   );

@@ -2,6 +2,8 @@ export type Role = 'tank' | 'damage' | 'support';
 
 export interface RosterPlayer {
   battleTag: string;
+  // InfluxDB tag form — BattleTag with '#' replaced by '-'.
+  playerId: string;
   display: string;
   slug: string;
   notes?: string;

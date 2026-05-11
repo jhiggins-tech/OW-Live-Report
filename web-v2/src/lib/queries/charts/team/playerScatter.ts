@@ -37,11 +37,11 @@ export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<Playe
   }
 
   return players.map((p) => {
-    const comb = cByP.get(p.battleTag);
-    const assists = aByP.get(p.battleTag) ?? null;
-    const game = gByP.get(p.battleTag);
+    const comb = cByP.get(p.playerId);
+    const assists = aByP.get(p.playerId) ?? null;
+    const game = gByP.get(p.playerId);
     return {
-      player: p.battleTag,
+      player: p.playerId,
       display: p.display,
       slug: p.slug,
       kda: kdaFrom(comb?.e, assists, comb?.d),

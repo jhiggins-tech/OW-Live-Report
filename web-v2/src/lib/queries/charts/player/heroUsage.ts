@@ -14,10 +14,10 @@ export interface PlayerHeroUsageResult {
   heroOrder: Array<{ key: string; pretty: string; total: number }>;
 }
 
-export async function fetchPlayerHeroUsage(battleTag: string): Promise<PlayerHeroUsageResult> {
+export async function fetchPlayerHeroUsage(playerId: string): Promise<PlayerHeroUsageResult> {
   const window = TIME_WINDOWS.playerSeason;
   const bucket = BUCKETS.heroUsage;
-  const q = `SELECT sum("time_played") AS tp FROM "career_stats_game" WHERE "player"='${quoteValue(battleTag)}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
+  const q = `SELECT sum("time_played") AS tp FROM "career_stats_game" WHERE "player"='${quoteValue(playerId)}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}), "hero" fill(none)`;
   const body = await runInfluxQuery(q);
 
   const totals = new Map<string, number>();

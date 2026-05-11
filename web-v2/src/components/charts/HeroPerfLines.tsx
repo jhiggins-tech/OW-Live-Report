@@ -7,14 +7,14 @@ import { fetchPlayerHeroUsage } from '../../lib/queries/charts/player/heroUsage'
 const COLORS = ['#59c2ff', '#41d8b7', '#ffb84f', '#ff7f73', '#a78bfa', '#f472b6', '#34d399', '#fbbf24'];
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
-export default function HeroPerfLines({ battleTag, hiddenHeroes }: { battleTag: string; hiddenHeroes: Set<string> }) {
+export default function HeroPerfLines({ playerId, hiddenHeroes }: { playerId: string; hiddenHeroes: Set<string> }) {
   const usage = useQuery({
-    queryKey: ['player', 'heroUsage', battleTag],
-    queryFn: () => fetchPlayerHeroUsage(battleTag),
+    queryKey: ['player', 'heroUsage', playerId],
+    queryFn: () => fetchPlayerHeroUsage(playerId),
   });
   const perf = useQuery({
-    queryKey: ['player', 'heroPerf', battleTag],
-    queryFn: () => fetchPlayerHeroPerf(battleTag),
+    queryKey: ['player', 'heroPerf', playerId],
+    queryFn: () => fetchPlayerHeroPerf(playerId),
   });
 
   const heroes = useMemo(

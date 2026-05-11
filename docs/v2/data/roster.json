@@ -1,53 +1,62 @@
 {
-  "generatedAt": "2026-05-11T12:59:40.132Z",
+  "generatedAt": "2026-05-11T13:20:45.609Z",
   "players": [
     {
       "battleTag": "Kieness#6123",
+      "playerId": "Kieness-6123",
       "display": "Kie",
       "notes": "Intel",
       "slug": "kie"
     },
     {
       "battleTag": "DarthKcaj#1443",
+      "playerId": "DarthKcaj-1443",
       "display": "Darth_Kcaj",
       "notes": "Coach",
       "slug": "darth-kcaj"
     },
     {
       "battleTag": "KiwiCore#1324",
+      "playerId": "KiwiCore-1324",
       "display": "Kiwi",
       "notes": "Number_One",
       "slug": "kiwi"
     },
     {
       "battleTag": "Shotdownboyz#1119",
+      "playerId": "Shotdownboyz-1119",
       "display": "ShotDownBoyz",
       "notes": "Lieutenant",
       "slug": "shotdownboyz"
     },
     {
       "battleTag": "Tones#11680",
+      "playerId": "Tones-11680",
       "display": "Tones",
       "notes": "Captain",
       "slug": "tones"
     },
     {
       "battleTag": "Vanillaxbean#1858",
+      "playerId": "Vanillaxbean-1858",
       "display": "EDDDDD",
       "slug": "eddddd"
     },
     {
       "battleTag": "FattyBom#1347",
+      "playerId": "FattyBom-1347",
       "display": "SimplyLilac",
       "slug": "simplylilac"
     },
     {
       "battleTag": "Lank#21912",
+      "playerId": "Lank-21912",
       "display": "LankCity",
       "slug": "lankcity"
     },
     {
       "battleTag": "Kiddo#11482",
+      "playerId": "Kiddo-11482",
       "display": "Melrose",
       "slug": "melrose"
     }

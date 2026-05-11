@@ -69,16 +69,16 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   const kdas: number[] = [];
   const wrs: number[] = [];
   for (const p of players) {
-    const k = kdaFrom(eByPlayer.get(p.battleTag), aByPlayer.get(p.battleTag), dByPlayer.get(p.battleTag));
+    const k = kdaFrom(eByPlayer.get(p.playerId), aByPlayer.get(p.playerId), dByPlayer.get(p.playerId));
     if (k !== null) kdas.push(k);
-    const wr = wpByPlayer.get(p.battleTag);
+    const wr = wpByPlayer.get(p.playerId);
     if (typeof wr === 'number') wrs.push(wr);
   }
 
   const freshCutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
   let freshPlayers = 0;
   for (const p of players) {
-    const seenAt = newestByPlayer.get(p.battleTag);
+    const seenAt = newestByPlayer.get(p.playerId);
     if (seenAt !== undefined && seenAt >= freshCutoff) freshPlayers += 1;
   }
 

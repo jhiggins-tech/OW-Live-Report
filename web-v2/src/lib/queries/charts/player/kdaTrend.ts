@@ -8,10 +8,10 @@ export interface PlayerKdaPoint {
   kda: number | null;
 }
 
-export async function fetchPlayerKdaTrend(battleTag: string): Promise<PlayerKdaPoint[]> {
+export async function fetchPlayerKdaTrend(playerId: string): Promise<PlayerKdaPoint[]> {
   const window = TIME_WINDOWS.playerSeason;
   const bucket = BUCKETS.playerKda;
-  const player = quoteValue(battleTag);
+  const player = quoteValue(playerId);
 
   const combatQ = `SELECT mean("eliminations") AS e, mean("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}) fill(none)`;
   const assistsQ = `SELECT mean("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${GAMEMODE}' AND time > now() - ${window} GROUP BY time(${bucket}) fill(none)`;

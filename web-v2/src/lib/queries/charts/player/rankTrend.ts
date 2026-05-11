@@ -9,10 +9,10 @@ export interface PlayerRankPoint {
   byRole: Record<Role, number | null>;
 }
 
-export async function fetchPlayerRankTrend(battleTag: string): Promise<PlayerRankPoint[]> {
+export async function fetchPlayerRankTrend(playerId: string): Promise<PlayerRankPoint[]> {
   const window = TIME_WINDOWS.playerSeason;
   const bucket = BUCKETS.playerRank;
-  const q = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player"='${quoteValue(battleTag)}' AND time > now() - ${window} GROUP BY time(${bucket}), "role" fill(none)`;
+  const q = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player"='${quoteValue(playerId)}' AND time > now() - ${window} GROUP BY time(${bucket}), "role" fill(none)`;
   const body = await runInfluxQuery(q);
 
   const points = new Map<number, Record<Role, number | null>>();
