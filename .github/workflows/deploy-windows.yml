@@ -21,7 +21,43 @@ jobs:
       - name: Build site (PowerShell)
         shell: pwsh
         run: |
-          .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host "::group::Environment"
+          Write-Host ("PowerShell: {0}" -f $PSVersionTable.PSVersion)
+          Write-Host ("PWD: {0}" -f (Get-Location).Path)
+          Write-Host "::endgroup::"
+
+          Write-Host "::group::Repo layout"
+          Get-ChildItem -Force | Select-Object Mode, LastWriteTime, Length, Name | Format-Table | Out-String | Write-Host
+          Write-Host "::endgroup::"
+
+          try {
+              .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed -Verbose
+          }
+          catch {
+              Write-Host "::error::Build failed: $($_.Exception.Message)"
+              Write-Host "::group::Exception detail"
+              $_ | Format-List -Force * | Out-String | Write-Host
+              if ($_.ScriptStackTrace) {
+                  Write-Host "ScriptStackTrace:"
+                  Write-Host $_.ScriptStackTrace
+              }
+              if ($_.Exception.InnerException) {
+                  Write-Host "InnerException:"
+                  $_.Exception.InnerException | Format-List -Force * | Out-String | Write-Host
+              }
+              Write-Host "::endgroup::"
+              throw
+          }
+
+          Write-Host "::group::docs/ after build"
+          if (Test-Path docs) {
+              Get-ChildItem docs -Recurse -File | Select-Object FullName, Length | Format-Table | Out-String | Write-Host
+          } else {
+              Write-Host "docs/ does not exist"
+          }
+          Write-Host "::endgroup::"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
