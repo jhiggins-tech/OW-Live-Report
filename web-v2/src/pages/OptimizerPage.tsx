@@ -3,9 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
-import { fetchOptimizerData } from '../lib/queries/optimizerData';
+import { useHeroMeta } from '../hooks/useHeroMeta';
+import { useTeamPlayerProfiles } from '../hooks/useTeamPlayerProfiles';
+import { fetchOptimizerData, type PlayerHeroStat, type PlayerOptimizerData } from '../lib/queries/optimizerData';
 import { buildCandidates, optimizeLineup, type LineupAssignment } from '../lib/optimizer';
 import { hashPlayerSet } from '../lib/queries/_shared';
+import type { HeroMeta } from '../lib/queries/heroMeta';
+import type { OverFastPlayerSummary } from '../lib/queries/overfastPlayerSummary';
 import type { Role, RosterPlayer } from '../types/models';
 
 const ROLE_OPTIONS: Array<{ value: Role | 'auto' | 'bench'; label: string }> = [
@@ -22,30 +26,93 @@ function fmtPercent(v: number): string {
   return `${v.toFixed(1)}%`;
 }
 
-function AssignmentCard({ a }: { a: LineupAssignment }) {
+function fmtPickrate(v: number | null): string {
+  return v === null ? '—' : `${v.toFixed(0)}%`;
+}
+
+function HeroRow({ hero, heroMeta }: { hero: PlayerHeroStat; heroMeta: HeroMeta | undefined }) {
+  const entry = heroMeta?.byKey[hero.hero];
+  const portrait = entry?.portrait;
+  const name = entry?.name ?? hero.prettyName;
   return (
-    <div className="panel" style={{ background: 'var(--panel-strong)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        <Link
-          to={`/players/${a.player.slug}`}
-          style={{ color: 'inherit', fontWeight: 600, textDecoration: 'none' }}
-        >
-          {a.player.display}
-        </Link>
-        <span className={`role-pill ${a.role}`}>{a.role}</span>
-        {a.locked ? (
-          <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>locked</span>
+    <div className="lineup-card-hero-row">
+      {portrait ? (
+        <img className="hero-portrait" src={portrait} alt="" loading="lazy" width={20} height={20} />
+      ) : (
+        <span className="hero-portrait hero-portrait--empty" aria-hidden="true" />
+      )}
+      <span className="lineup-card-hero-name">{name}</span>
+      <span className="lineup-card-hero-stat" title="Hero win rate">
+        {hero.winRate === null ? '—' : `${hero.winRate.toFixed(0)}%`}
+      </span>
+      <span className="lineup-card-hero-stat lineup-card-hero-pick" title="Player pickrate within role">
+        {fmtPickrate(hero.pickRate)}
+      </span>
+    </div>
+  );
+}
+
+function AssignmentCard({
+  a,
+  heroes,
+  profile,
+  heroMeta,
+}: {
+  a: LineupAssignment;
+  heroes: PlayerHeroStat[];
+  profile: OverFastPlayerSummary | undefined;
+  heroMeta: HeroMeta | undefined;
+}) {
+  const competitive = profile?.competitive[a.role];
+  const avatar = profile?.avatar;
+  return (
+    <div className="panel lineup-card" style={{ background: 'var(--panel-strong)' }}>
+      <div className="lineup-card-header">
+        {avatar ? (
+          <img className="lineup-card-avatar" src={avatar} alt="" loading="lazy" />
+        ) : (
+          <span className="lineup-card-avatar lineup-card-avatar--empty" aria-hidden="true" />
+        )}
+        <div className="lineup-card-identity">
+          <Link
+            to={`/players/${a.player.slug}`}
+            className="lineup-card-name"
+          >
+            {a.player.display}
+          </Link>
+          <div className="lineup-card-meta">
+            <span className={`role-pill ${a.role}`}>
+              {competitive?.roleIcon ? (
+                <img src={competitive.roleIcon} alt="" loading="lazy" />
+              ) : null}
+              {a.role}
+            </span>
+            {a.locked ? <span className="lineup-card-locked">locked</span> : null}
+          </div>
+        </div>
+        {competitive?.rankIcon ? (
+          <div className="lineup-card-rank" title={`${a.option.rankLabel} — division ${competitive.tier ?? '?'}`}>
+            <img className="lineup-card-rank-icon" src={competitive.rankIcon} alt="" loading="lazy" />
+            {competitive.tierIcon ? (
+              <img className="lineup-card-tier-icon" src={competitive.tierIcon} alt="" loading="lazy" />
+            ) : null}
+          </div>
         ) : null}
       </div>
-      <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 6 }}>
+      <div className="lineup-card-stats">
         {a.option.rankLabel} · {a.option.kda.toFixed(2)} KDA · {fmtPercent(a.option.winRate)} win
       </div>
       {a.option.explanation ? (
-        <div style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: 6 }}>
-          {a.option.explanation}
-        </div>
+        <div className="lineup-card-explanation">{a.option.explanation}</div>
       ) : null}
-      <div style={{ marginTop: 8, fontSize: '0.82rem' }}>
+      <div className="lineup-card-heroes">
+        {heroes.length === 0 ? (
+          <div className="lineup-card-heroes-empty">No recent games on this role.</div>
+        ) : (
+          heroes.map((h) => <HeroRow key={h.hero} hero={h} heroMeta={heroMeta} />)
+        )}
+      </div>
+      <div className="lineup-card-score">
         score <strong>{a.option.score.toFixed(3)}</strong>
       </div>
     </div>
@@ -67,6 +134,14 @@ export default function OptimizerPage() {
     queryFn: () => fetchOptimizerData(visible),
     enabled: visible.length > 0,
   });
+  const profiles = useTeamPlayerProfiles(visible);
+  const heroMeta = useHeroMeta();
+
+  const heroesByPlayerAndRole = useMemo(() => {
+    const m = new Map<string, PlayerOptimizerData['heroesByRole']>();
+    for (const d of query.data ?? []) m.set(d.player.playerId, d.heroesByRole);
+    return m;
+  }, [query.data]);
 
   const result = useMemo(() => {
     if (!query.data) return null;
@@ -118,9 +193,19 @@ export default function OptimizerPage() {
               </span>
             </div>
             <div className="grid cols-3">
-              {result.lineup.assignments.map((a) => (
-                <AssignmentCard key={a.player.slug} a={a} />
-              ))}
+              {result.lineup.assignments.map((a) => {
+                const heroes = heroesByPlayerAndRole.get(a.player.playerId)?.[a.role] ?? [];
+                const profile = profiles.byPlayerId[a.player.playerId];
+                return (
+                  <AssignmentCard
+                    key={a.player.slug}
+                    a={a}
+                    heroes={heroes}
+                    profile={profile}
+                    heroMeta={heroMeta.data}
+                  />
+                );
+              })}
             </div>
           </>
         )}
