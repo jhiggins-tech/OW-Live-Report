@@ -199,29 +199,67 @@ export default function OptimizerPage() {
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
-              <span
-                className={`role-pill ${result.lineup.wideAssessment.label === 'wide' ? 'damage' : result.lineup.wideAssessment.label === 'narrow' ? 'support' : 'tank'}`}
-                title={result.lineup.wideAssessment.reason}
-              >
-                {result.lineup.wideAssessment.label === 'unknown' ? 'Wide check unknown' : `${result.lineup.wideAssessment.label} group`}
-              </span>
-              {result.lineup.wideAssessment.spreadDivisions !== null ? (
-                <span
-                  style={{ color: 'var(--muted)', fontSize: '0.9rem' }}
-                  title={
-                    result.lineup.wideAssessment.threshold !== null
-                      ? `Wide threshold: ${result.lineup.wideAssessment.threshold} divisions`
-                      : undefined
-                  }
-                >
-                  spread {result.lineup.wideAssessment.spreadDivisions.toFixed(1)} divisions
-                </span>
-              ) : null}
-              <span style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
-                team KDA {result.lineup.teamKda.toFixed(2)} · team win {fmtPercent(result.lineup.teamWinRate)} · score {result.lineup.totalScore.toFixed(3)}
-              </span>
-            </div>
+            {(() => {
+              const ranked = result.lineup.assignments.filter(
+                (a): a is typeof a & { option: { rankOrdinal: number } } =>
+                  typeof a.option.rankOrdinal === 'number',
+              );
+              const lowAssignment = ranked.reduce<typeof ranked[number] | null>(
+                (acc, a) => (acc === null || a.option.rankOrdinal < acc.option.rankOrdinal ? a : acc),
+                null,
+              );
+              const highAssignment = ranked.reduce<typeof ranked[number] | null>(
+                (acc, a) => (acc === null || a.option.rankOrdinal > acc.option.rankOrdinal ? a : acc),
+                null,
+              );
+              const showExtremes =
+                lowAssignment !== null && highAssignment !== null &&
+                lowAssignment.player.playerId !== highAssignment.player.playerId;
+              const lowProfile = lowAssignment ? profiles.byPlayerId[lowAssignment.player.playerId]?.competitive[lowAssignment.role] : undefined;
+              const highProfile = highAssignment ? profiles.byPlayerId[highAssignment.player.playerId]?.competitive[highAssignment.role] : undefined;
+              return (
+                <div className="lineup-summary">
+                  <span
+                    className={`role-pill ${result.lineup.wideAssessment.label === 'wide' ? 'damage' : result.lineup.wideAssessment.label === 'narrow' ? 'support' : 'tank'}`}
+                    title={result.lineup.wideAssessment.reason}
+                  >
+                    {result.lineup.wideAssessment.label === 'unknown' ? 'Wide check unknown' : `${result.lineup.wideAssessment.label} group`}
+                  </span>
+                  {result.lineup.wideAssessment.spreadDivisions !== null ? (
+                    <span
+                      className="lineup-summary-muted"
+                      title={
+                        result.lineup.wideAssessment.threshold !== null
+                          ? `Wide threshold: ${result.lineup.wideAssessment.threshold} divisions`
+                          : undefined
+                      }
+                    >
+                      spread {result.lineup.wideAssessment.spreadDivisions.toFixed(1)} divisions
+                    </span>
+                  ) : null}
+                  {showExtremes && lowAssignment && highAssignment ? (
+                    <span className="lineup-extremes" title="Lowest- and highest-ranked roles in the lineup">
+                      <span className="lineup-extreme" title={`${lowAssignment.player.display} (${lowAssignment.role}) — lowest rank`}>
+                        {lowProfile?.rankIcon ? (
+                          <img className="lineup-extreme-icon" src={lowProfile.rankIcon} alt="" loading="lazy" />
+                        ) : null}
+                        {lowAssignment.option.rankLabel}
+                      </span>
+                      <span className="lineup-extreme-sep" aria-hidden="true">→</span>
+                      <span className="lineup-extreme" title={`${highAssignment.player.display} (${highAssignment.role}) — highest rank`}>
+                        {highProfile?.rankIcon ? (
+                          <img className="lineup-extreme-icon" src={highProfile.rankIcon} alt="" loading="lazy" />
+                        ) : null}
+                        {highAssignment.option.rankLabel}
+                      </span>
+                    </span>
+                  ) : null}
+                  <span className="lineup-summary-muted">
+                    team KDA {result.lineup.teamKda.toFixed(2)} · team win {fmtPercent(result.lineup.teamWinRate)} · score {result.lineup.totalScore.toFixed(3)}
+                  </span>
+                </div>
+              );
+            })()}
             <div className="grid cols-3">
               {result.lineup.assignments.map((a) => {
                 const heroes = heroesByPlayerAndRole.get(a.player.playerId)?.[a.role] ?? [];
