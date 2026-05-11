@@ -7,6 +7,9 @@ import type { Role, RosterPlayer } from '../../../../types/models';
 export interface TeamRankPoint {
   time: number;
   byRole: Record<Role, number | null>;
+  // Per-player ordinal averaged across whichever roles the player has at
+  // that bucket. Used by useTeamTrajectories to piggy-back on this query.
+  byPlayer: Record<string, number | null>;
 }
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
@@ -19,10 +22,20 @@ export async function fetchTeamRankOverTime(players: RosterPlayer[]): Promise<Te
   const q = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player" =~ /${regex}/ AND time > now() - ${window} GROUP BY time(${bucket}), "player", "role" fill(none)`;
   const body = await runInfluxQuery(q);
 
-  const points = new Map<number, Record<Role, number[]>>();
-  const ensure = (t: number) => {
+  interface BucketAcc {
+    byRoleOrdinals: Record<Role, number[]>;
+    byPlayerOrdinals: Map<string, number[]>;
+  }
+  const points = new Map<number, BucketAcc>();
+  const ensure = (t: number): BucketAcc => {
     let p = points.get(t);
-    if (!p) { p = { tank: [], damage: [], support: [] }; points.set(t, p); }
+    if (!p) {
+      p = {
+        byRoleOrdinals: { tank: [], damage: [], support: [] },
+        byPlayerOrdinals: new Map(),
+      };
+      points.set(t, p);
+    }
     return p;
   };
 
@@ -30,21 +43,33 @@ export async function fetchTeamRankOverTime(players: RosterPlayer[]): Promise<Te
     const role = (s.tags.role ?? '').toLowerCase();
     const normalizedRole: Role | null = role === 'dps' ? 'damage' : (ROLES as readonly string[]).includes(role) ? (role as Role) : null;
     if (!normalizedRole) continue;
+    const playerTag = s.tags.player ?? '';
     for (const row of s.rows) {
       const t = Number(row.time);
       if (!Number.isFinite(t)) continue;
       const ord = rankOrdinal(row.tier as string | null, row.division as number | string | null);
       if (ord === null) continue;
-      ensure(t)[normalizedRole].push(ord);
+      const acc = ensure(t);
+      acc.byRoleOrdinals[normalizedRole].push(ord);
+      const cur = acc.byPlayerOrdinals.get(playerTag) ?? [];
+      cur.push(ord);
+      acc.byPlayerOrdinals.set(playerTag, cur);
     }
   }
 
+  const mean = (arr: number[]): number | null => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
   return [...points.keys()].sort((a, b) => a - b).map((time) => {
     const p = points.get(time)!;
-    const mean = (arr: number[]): number | null => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+    const byPlayer: Record<string, number | null> = {};
+    for (const [tag, ords] of p.byPlayerOrdinals) byPlayer[tag] = mean(ords);
     return {
       time,
-      byRole: { tank: mean(p.tank), damage: mean(p.damage), support: mean(p.support) },
+      byRole: {
+        tank: mean(p.byRoleOrdinals.tank),
+        damage: mean(p.byRoleOrdinals.damage),
+        support: mean(p.byRoleOrdinals.support),
+      },
+      byPlayer,
     };
   });
 }
