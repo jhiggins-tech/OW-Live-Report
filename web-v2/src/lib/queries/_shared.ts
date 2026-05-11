@@ -8,10 +8,10 @@ function escapeForRegex(input: string): string {
 }
 
 export function buildPlayerRegex(players: RosterPlayer[] | readonly string[]): string {
-  if (!players.length) return '__no_player__';
-  const ids = (players as RosterPlayer[]).map((p) =>
-    typeof p === 'string' ? p : p.playerId,
-  );
+  const ids = (players as Array<RosterPlayer | string>)
+    .map((p) => (typeof p === 'string' ? p : p?.playerId))
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (!ids.length) return '__no_player__';
   return `^(${ids.map(escapeForRegex).join('|')})$`;
 }
 
@@ -27,7 +27,8 @@ export function quoteValue(input: string): string {
 
 export function hashPlayerSet(players: RosterPlayer[]): string {
   return players
-    .map((p) => p.playerId)
+    .map((p) => p?.playerId ?? '')
+    .filter(Boolean)
     .sort()
     .join(',');
 }

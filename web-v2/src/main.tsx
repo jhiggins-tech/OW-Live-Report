@@ -26,9 +26,11 @@ const queryClient = new QueryClient({
   },
 });
 
+// Bump the version suffix whenever the cached data shape changes; doing so
+// invalidates any sessionStorage caches that pre-date the schema change.
 const persister = createSyncStoragePersister({
   storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
-  key: 'owr-v2:react-query',
+  key: 'owr-v2:react-query:v2',
   throttleTime: 1000,
 });
 
