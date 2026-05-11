@@ -37,7 +37,7 @@ function Invoke-OwReportRun {
         $reportIndex = Get-OwReportObjectValue -Object $published -Path @('docs_index') -Default $published.latest_index
         Write-OwReportLog -RunContext $runContext -Message ("Finished run {0}. Latest report: {1}" -f $runContext.run_id, $reportIndex)
 
-        $latestDatasetRun = @($dataset.run_records | Sort-Object { Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '' } | Select-Object -Last 1)
+        $latestDatasetRun = @($dataset.run_records | Sort-Object { [string](Get-OwReportObjectValue -Object $_ -Path @('timestamp') -Default '') } | Select-Object -Last 1)
         $latestSuccessfulPlayers = 0
         if ($latestDatasetRun.Count -gt 0) {
             $latestSuccessfulPlayers = ConvertTo-OwReportInteger -Value (Get-OwReportObjectValue -Object $latestDatasetRun[0] -Path @('successful_players') -Default 0)
