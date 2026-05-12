@@ -9,7 +9,7 @@
     "prebuild": "pnpm run build:roster && pnpm run build:config",
     "dev": "pnpm run prebuild && vite",
     "build": "pnpm run prebuild && tsc --noEmit && vite build",
-    "preview": "vite preview --base=/v2/",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

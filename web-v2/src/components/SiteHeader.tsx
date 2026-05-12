@@ -22,7 +22,6 @@ export default function SiteHeader() {
           {!isSettings ? (
             <Link to="/settings" style={{ color: 'var(--muted)' }}>Settings</Link>
           ) : null}
-          <a href={cfg.ui.linkToV1Url} style={{ color: 'var(--muted)' }}>Back to V1</a>
         </nav>
       </div>
       <p className="lede">{cfg.team.subtitle}</p>
