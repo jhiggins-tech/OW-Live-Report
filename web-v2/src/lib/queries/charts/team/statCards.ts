@@ -22,7 +22,12 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
 
   const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
   const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
-  const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
+  // Compute team WR from games_won/games_played at hero='all-heroes' rather
+  // than reading win_percentage: that field is null on all-heroes rows
+  // (OverFast doesn't surface an aggregate), and last(win_percentage) without
+  // a hero filter returns whichever per-hero value last() resolves to —
+  // effectively a random hero's WR labeled as the player's overall.
+  const gameQ = `SELECT last("games_won") AS gw, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY "player"`;
   // last(username) is the cheapest way to recover the per-player row time
   // from player_summary (there is no last_updated_at field on the schema).
   const summaryQ = `SELECT last("username") AS u FROM "player_summary" WHERE "player" =~ /${regex}/ GROUP BY "player"`;
@@ -47,10 +52,11 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   }
 
   const wpByPlayer = new Map<string, number>();
-  for (const s of parseStatementSeries<{ wp: number | null; gp: number | null }>(game)) {
+  for (const s of parseStatementSeries<{ gw: number | null; gp: number | null }>(game)) {
     const tag = s.tags.player ?? '';
-    const wp = safeNumber(s.rows[0]?.wp);
-    if (wp !== null) wpByPlayer.set(tag, wp);
+    const gw = safeNumber(s.rows[0]?.gw);
+    const gp = safeNumber(s.rows[0]?.gp);
+    if (gw !== null && gp !== null && gp > 0) wpByPlayer.set(tag, (gw / gp) * 100);
   }
 
   const newestByPlayer = new Map<string, number>();
