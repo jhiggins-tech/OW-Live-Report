@@ -1,60 +1,23 @@
-# Overwatch Weasel Report
+# OW Live Report
 
-This project publishes a static analytics site shell that now reads **live Overwatch stats from the hosted HTTPS InfluxDB endpoint in the browser**.
+Static React + TypeScript site that renders live competitive Overwatch
+analytics for a tracked roster. The browser queries InfluxDB directly at
+view time; there is no prebuild data pipeline.
 
-Current model:
+Hosted via GitHub Pages from `main /docs`.
 
-1. GitHub Pages serves the site from `docs/`
-2. the browser calls the live HTTPS stats endpoint directly
-3. the dashboard rebuilds itself from that live data
-4. the embedded/published snapshot is now only a fallback if the live server is unavailable
+## Stack
 
-That means once the updated site code is published, normal stat changes should show up automatically without running a local snapshot refresh.
+- React 18 + TypeScript + Vite 5
+- React Router v6 (HashRouter)
+- TanStack Query with sessionStorage persister
+- Recharts
+- Source in `web-v2/`; build output in `docs/`
 
-## Canonical Site Copy
+## Roster
 
-Use this as the publishable site copy:
-
-- `docs/index.html`
-
-That is the version GitHub Pages should serve.
-
-## Data Source Status
-
-The site shows a source badge so you can tell what you are looking at:
-
-- `Live Server`
-- `Published Snapshot`
-- `Fallback Snapshot`
-- `Static Snapshot`
-
-Expected normal state after this HTTPS switch:
-
-- `Live Server`
-
-If the hosted DB is down or unreachable, the page can still fall back to the last embedded/published snapshot instead of breaking completely.
-
-## Live Data Architecture
-
-The published site now prefers:
-
-- `https://owstats.jhiggins.tech/query`
-
-with:
-
-- database: `ow_stats_telegraf`
-
-The browser fetch path is enabled only because the endpoint is now HTTPS and returns browser-safe CORS headers.
-
-## Simple Roster File
-
-Tracked players still live in:
-
-- `config/tracked-battletags.txt`
-
-One player per line.
-
-Accepted formats:
+Tracked players live in `config/tracked-battletags.txt`. One player per
+line. Accepted formats:
 
 ```text
 BattleTag
@@ -62,204 +25,61 @@ Display Name | BattleTag
 Display Name | BattleTag | Optional notes
 ```
 
-Example:
+`scripts/build-roster.mjs` parses this file at build time into
+`public/data/roster.json`, which the app fetches on boot.
 
-```text
-Tank Main | ExampleTank#1234
-Damage Flex | ExampleDps#5678
-Support | ExampleSupport#9999 | Usually queues with the main stack
+## Runtime config
+
+Non-secret operational values flow in via env vars at build time; see
+[`web-v2/.env.example`](./web-v2/.env.example) for the full contract.
+In CI, override via repo Settings → Variables → Actions. Defaults live
+in `web-v2/src/lib/runtimeConfig.ts`.
+
+Keys:
+
+- `TEAM_NAME`, `TEAM_SUBTITLE`
+- `TOP_HERO_COUNT`
+- `INFLUX_QUERY_URL`, `INFLUX_DATABASE`, `INFLUX_GAMEMODE`
+
+## Local dev
+
+```bash
+cd web-v2
+pnpm install
+pnpm dev          # http://localhost:5173/
 ```
 
-## Main Config
+Production preview:
 
-Main config file:
-
-- `config/team.sample.json`
-
-Things you may want to edit:
-
-- `team_name`
-- live database URL if the host changes
-- player overrides such as default locked roles
-
-## What Changes Need A Rebuild
-
-### Data-only changes
-
-You do **not** need to rerun the local snapshot tool just to get newer stats on the published site anymore.
-
-If the live DB updates, the published page should pull that data automatically on load.
-
-### Code / layout / roster changes
-
-You **do** still need to rebuild or republish when you change:
-
-- HTML / JS / CSS
-- tracked players
-- config
-- page layout or analytics logic
-
-Because GitHub Pages still needs the updated site files under `docs/`.
-
-## Local Preview
-
-Open:
-
-- `docs/index.html`
-
-Important note:
-
-- if you open the page directly from disk with `file:///...`, some browsers handle cross-origin fetch differently
-- the site will still try the live HTTPS source first
-- if that fails, it falls back to the embedded snapshot
-
-The most accurate real-world test is the published GitHub Pages site, because that is how the browser will run in production.
-
-## Commands
-
-### Edit roster
-
-```powershell
-notepad .\config\tracked-battletags.txt
+```bash
+pnpm build
+pnpm preview
 ```
 
-### Edit config
+Type check:
 
-```powershell
-notepad .\config\team.sample.json
+```bash
+pnpm typecheck
 ```
 
-### Rebuild local docs after code/config changes
+## Deploy
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-report.ps1 -ConfigPath .\config\team.sample.json -WideMatchContext mixed
-```
+`.github/workflows/deploy.yml` runs on every push to `main`:
 
-Short helper:
+1. Build the roster manifest from `config/tracked-battletags.txt`.
+2. Build the SPA into `docs/`.
+3. Commit-back `docs/` to `main` with `[skip ci]`.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\refresh-site-data.ps1
-```
+GitHub Pages serves the resulting `docs/` tree. No manual steps.
 
-### Open the local preview
+## Plans
 
-```powershell
-start .\docs\index.html
-```
+Forward-looking design docs live in [`plan/`](./plan/). Each file is a
+PRD with status / scope / open questions. See
+[`plan/README.md`](./plan/README.md) for the convention.
 
-## What `run-report.ps1` Still Does
+## Project history
 
-Even though the published site is now live-data-first, the local rebuild still has value.
-
-It:
-
-1. reads config and roster
-2. generates the site shell
-3. updates `docs/`
-4. bakes in a fallback snapshot in case the live DB is unavailable
-
-So the command is still useful for:
-
-- UI changes
-- new players
-- config changes
-- fallback refreshes
-
-It is no longer the normal mechanism for daily stat updates on the published site.
-
-## GitHub Pages Flow
-
-Recommended setup:
-
-1. push the repo
-2. GitHub Pages serves from `main` -> `/docs`
-3. the published page loads live data from the HTTPS stats endpoint
-
-Normal future workflow:
-
-1. make code/config changes locally
-2. rebuild `docs/`
-3. inspect `docs/index.html`
-4. push repo changes
-
-You do not need to republish just because the underlying stats changed.
-
-## Fallback Snapshot Files
-
-These still exist:
-
-- `docs/data/site-model.json`
-- `docs/data/published-state.json`
-
-They are now fallback resilience files, not the primary live data source.
-
-The page should prefer the live server first and only use these if the live fetch fails.
-
-## Long-Term Tracking
-
-Long-term history now lives in the hosted database.
-
-The site reads that history live when it loads, then computes:
-
-- team overview metrics
-- player drill-downs
-- trend charts
-- hero recommendations
-- optimizer outputs
-
-So the published site should reflect the current database state automatically.
-
-## Settings Page
-
-Settings page:
-
-- `docs/settings.html`
-
-It still supports browser-local hide/show behavior for runs/snapshots already present in the loaded model.
-
-In live DB mode, those controls are view-only and do not delete anything from the hosted source.
-
-## Team Optimizer
-
-The `Best Team Combination` section still:
-
-- uses competitive-only role data
-- builds a `1 tank / 2 DPS / 2 support` lineup
-- prefers `Narrow` lineups when possible
-- supports browser-side role locks
-- supports `Not Playing`
-
-## Testing
-
-Run tests with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
-```
-
-## Helpful Files
-
-- `config/tracked-battletags.txt`: roster list
-- `config/team.sample.json`: config
-- `web/app.js`: browser live-data logic
-- `run-report.ps1`: rebuild the site shell and fallback snapshot
-- `refresh-site-data.ps1`: shorthand rebuild helper
-- `docs/index.html`: publishable site entrypoint
-- `docs/settings.html`: settings page
-- `docs/data/site-model.json`: fallback snapshot data
-- `docs/data/published-state.json`: fallback incremental state
-
-## Everyday Reality Now
-
-For normal stat updates:
-
-1. the database updates
-2. the published page reads that live data
-3. the site updates on load
-
-For code/config updates:
-
-1. change code locally
-2. rebuild `docs/`
-3. inspect locally
-4. push to GitHub
+V1 was a PowerShell-rendered static site (`docs/` baked from snapshots)
+that was retired in favor of this live-data architecture. The final V1
+commit is tagged [`v1-final`](../../tree/v1-final) for archival.
