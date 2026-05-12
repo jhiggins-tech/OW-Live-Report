@@ -1,0 +1,48 @@
+# plan/
+
+Working plan documents for the V2 site rebuild. Each markdown file is a PRD
+(Product Requirement Document) — what the change is, why we want it, what's
+in scope, what's out, and the open questions.
+
+## Master plan
+
+- **[v2.md](./v2.md)** — the original V2 greenfield plan. Records the MVP
+  scope, the V2.1 checklist (all shipped, with PR references), the V2.2
+  backlog (pointing at the PRDs below), and the V1→V2 port map.
+
+## V2.2 PRDs
+
+All sized to roughly one PR each. Status is currently "Proposed" except
+where noted.
+
+- **[v2.2-hash-url-migration.md](./v2.2-hash-url-migration.md)** — drop the
+  `#` from V2 URLs by moving HashRouter → BrowserRouter and emitting one
+  HTML stub per route at build time. Biggest of the five; touches routing,
+  build, and CI.
+- **[v2.2-hero-pool-meta-overlay.md](./v2.2-hero-pool-meta-overlay.md)** —
+  layer OverFast community pickrate onto the Overview team hero pool so
+  you can see at a glance whether the team is on-meta or running niche
+  picks. Small follow-up to PR #20.
+- **[v2.2-hero-portraits.md](./v2.2-hero-portraits.md)** — *Shipped in
+  [PR #24](https://github.com/jhiggins-tech/OW-Live-Report/pull/24).* Hero
+  portraits beside hero names on the player leaderboard and the team
+  hero-pool axis.
+- **[v2.2-optimizer-card-enrichment.md](./v2.2-optimizer-card-enrichment.md)**
+  — enrich Optimizer suggested-lineup cards with player avatar, rank
+  insignia (from OverFast `/players/{id}/summary`), and a top-5 hero list
+  for the assigned role with portraits + per-hero win % and player
+  pickrate. ~1 PR, ~200 LOC.
+- **[v2.2-overfast-player-endpoints.md](./v2.2-overfast-player-endpoints.md)**
+  — evaluate `/players/{id}/stats/*` for live (non-cached) data. Current
+  recommendation: **skip** unless a concrete real-time use case shows up.
+  (Note: the optimizer-card PRD above uses `/players/{id}/summary`, a
+  different endpoint than the stats ones, which it explicitly justifies.)
+
+## Conventions
+
+- File name pattern: `<version>-<short-slug>.md`. Use lowercase, hyphens.
+- Every PRD has these sections: *Status, Context, Goals, Non-goals,
+  Proposed approach, Open questions, Risks, Acceptance criteria,
+  Estimated effort*.
+- PRDs link to relevant PRs by number so context survives across sessions.
+- When a PRD ships, mark its `Status` line and link the merged PR.
