@@ -25,8 +25,7 @@ We now have the go-ahead to retire V1 entirely:
 2. All V1 source, build tooling, snapshots, and CI are deleted from `main`.
 3. One CI workflow (`deploy.yml`) builds and publishes V2 to `docs/`.
 4. The Pages source mode stays on `main /docs` — no settings change required.
-5. Bookmarked `/v2/` URLs continue to land somewhere sensible for one
-   release cycle via a redirect stub.
+5. `/OW-Live-Report/v2/` 404s after cutover — no redirect stub.
 
 ## Non-goals
 
@@ -110,25 +109,7 @@ Rename `.github/workflows/deploy-v2-linux.yml` → `deploy.yml`. Diff:
   push retry loop's purpose comment. Keep the retry itself as generic
   resilience.
 
-### 5. Bookmark redirect (optional, one release cycle)
-
-Ship a minimal `web-v2/public/v2/index.html` that meta-refreshes to `../`.
-Vite copies `public/*` to the bundle root, so this lands at
-`docs/v2/index.html` post-build. ~5 lines:
-
-```html
-<!doctype html>
-<meta charset="utf-8">
-<title>OW Live Report — moved</title>
-<meta http-equiv="refresh" content="0; url=../">
-<link rel="canonical" href="../">
-<p>This page has moved to <a href="../">../</a>.</p>
-```
-
-Remove in a follow-up PR after a few weeks once analytics (or word of
-mouth) confirm nobody's hitting `/v2/` anymore.
-
-### 6. Docs
+### 5. Docs
 
 - Rewrite `README.md` from the V1-flavoured copy to a short V2-focused
   intro: stack, roster file, runtime config env vars, local dev
@@ -140,21 +121,18 @@ mouth) confirm nobody's hitting `/v2/` anymore.
   `/v2/` shift to `/`. (Verify after writing this PRD; that PRD was
   written assuming the V1 coexistence world.)
 
-## Open questions
+## Resolved decisions
 
-1. **Tag name**: `v1-final` vs `v1-archive` vs date-stamped? Recommend
-   `v1-final` for searchability.
-2. **Redirect stub lifetime**: ship it (one-cycle) or skip entirely?
-   Recommend ship — five lines, zero ongoing cost, and the V1 site has
-   been live long enough that some links almost certainly exist.
-3. **Hash URLs as part of cutover, or stay deferred?** Recommend stay
-   deferred. The hash-URL PRD is non-trivial (build-time per-route
-   stubs, 404 handling) and bundling it raises blast radius. Cutover
-   should be small and reversible-via-revert.
-4. **Pages build cache**: GitHub Pages caches `index.html` for up to
-   ~10 minutes. There will be a brief window post-merge where a hard
-   refresh shows the old V1 page from cache. Acceptable; flag in the
-   PR description so we're not surprised.
+1. **Tag name**: `v1-final`.
+2. **Redirect stub**: skip. `/v2/` 404s after cutover.
+3. **Hash URLs**: stay deferred to `plan/v2.2-hash-url-migration.md`.
+   Cutover ships `/#/...` paths at the new root; clean URLs come later.
+
+## Risks to call out (no decision needed)
+
+- **Pages build cache**: GitHub Pages caches `index.html` for up to
+  ~10 minutes. There will be a brief window post-merge where a hard
+  refresh shows the old V1 page from cache. Flag in the PR description.
 
 ## Risks
 
@@ -182,8 +160,7 @@ mouth) confirm nobody's hitting `/v2/` anymore.
   live data.
 - `https://<pages-host>/OW-Live-Report/#/players/<slug>`,
   `/#/settings`, `/#/optimizer` all route correctly.
-- `https://<pages-host>/OW-Live-Report/v2/` either 404s or redirects
-  to root (depending on whether step 5 ships).
+- `https://<pages-host>/OW-Live-Report/v2/` 404s.
 - `git ls-files` shows no PowerShell, no `web/`, no `docs/data/`,
   no `docs/index.html`/`settings.html`/`players/`, no
   `deploy-windows.yml`, no `config/team.sample.json`.
@@ -208,4 +185,3 @@ plus a watch on the first post-merge CI run.
    tag.
 5. Watch CI commit-back land; smoke-test the production URLs against
    the acceptance criteria.
-6. Schedule a follow-up to drop the `/v2/` redirect stub.
