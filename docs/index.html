@@ -1,92 +1,16 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Weasels | Overwatch Team Report</title>
-  <link rel="stylesheet" href="assets/styles.css">
-</head>
-<body class="owr-body overview-page">
-  <div class="owr-noise"></div>
-  <header class="hero-shell">
-    <div>
-      <p class="eyebrow">OVERWATCH COMPETITIVE TEAM ANALYTICS</p>
-      <h1>Weasels</h1>
-      <p class="lede">Database-backed competitive reporting with team and player drill-downs.</p>
-      <div class="hero-actions">
-        <a class="nav-link" href="settings.html">Settings</a>
-      </div>
-    </div>
-    <div class="hero-meta" id="hero-meta"></div>
-  </header>
-  <main class="page-shell">
-    <section class="panel section-grid">
-      <div class="section-head">
-        <h2>Team Pulse</h2>
-        <p>Snapshot-aware trends, irregular-run safe.</p>
-      </div>
-      <div id="overview-summary" class="summary-strip"></div>
-      <div class="chart-grid triple">
-        <section class="subpanel">
-          <div class="subpanel-head">
-            <h3>Team Average KDA <span class="info-pill" title="Team-level KDA across manual snapshots.">i</span></h3>
-            <p>Actual timestamps across manual runs.</p>
-          </div>
-          <div id="team-kda-chart" class="chart-shell"></div>
-        </section>
-        <section class="subpanel">
-          <div class="subpanel-head">
-            <h3>Team Win Rate <span class="info-pill" title="Team-level win rate across manual snapshots.">i</span></h3>
-            <p>Separated for easier reading.</p>
-          </div>
-          <div id="team-winrate-chart" class="chart-shell"></div>
-        </section>
-        <section class="subpanel">
-          <div class="subpanel-head">
-            <h3>Team Rank Progression <span class="info-pill" title="Average visible competitive rank over time using an internal ordinal ladder scale.">i</span></h3>
-            <p>Wide-queue runs lower interpretation confidence.</p>
-          </div>
-          <div id="team-rank-chart" class="chart-shell"></div>
-        </section>
-      </div>
-    </section>
-
-    <section class="panel chart-grid dual">
-      <section class="subpanel">
-        <div class="subpanel-head">
-          <h3>Player Comparison <span class="info-pill" title="Each dot is one player from the latest snapshot. Hover a dot or use the legend below the chart to identify players.">i</span></h3>
-          <p>Current KDA vs win rate snapshot.</p>
-        </div>
-        <div id="comparison-chart" class="chart-shell"></div>
-      </section>
-      <section class="subpanel">
-        <div class="subpanel-head">
-          <h3>Hero Pool Summary <span class="info-pill" title="Current-season team hero usage footprint, ranked by tracked competitive time played.">i</span></h3>
-          <p>Current-season team usage footprint.</p>
-        </div>
-        <div id="hero-pool-chart" class="chart-shell"></div>
-      </section>
-    </section>
-
-    <section class="panel">
-      <div class="section-head">
-        <h2>Roster View</h2>
-        <p>Filter by trend, role, warnings, and queue interpretation.</p>
-      </div>
-      <div id="overview-filters" class="filter-row"></div>
-      <div id="player-visibility-controls" class="player-visibility-controls"></div>
-      <div id="player-grid" class="player-grid"></div>
-    </section>
-
-    <section class="panel">
-      <div class="section-head">
-        <h2>Best Team Combination <span class="info-pill" title="Builds a 1 tank, 2 DPS, 2 support lineup from the latest competitive-only role data. You can lock roles in the browser to rerun the suggestion.">i</span></h2>
-        <p>Pick the strongest 1 / 2 / 2 lineup and flag whether the role-rank spread looks Wide.</p>
-      </div>
-      <div id="team-optimizer" class="optimizer-shell"></div>
-    </section>
-  </main>
-  <script id="report-data" type="application/json">{"page":"overview","payload":null,"live":{"enabled":true,"players":[{"battle_tag":"Kieness#6123","player_id":"Kieness-6123","slug":"kie","display_name":"Kie","notes":"Intel","hidden_heroes":[],"locked_role":null},{"battle_tag":"DarthKcaj#1443","player_id":"DarthKcaj-1443","slug":"darth-kcaj","display_name":"Darth_Kcaj","notes":"Coach","hidden_heroes":[],"locked_role":null},{"battle_tag":"KiwiCore#1324","player_id":"KiwiCore-1324","slug":"kiwi","display_name":"Kiwi","notes":"Number_One","hidden_heroes":[],"locked_role":null},{"battle_tag":"Shotdownboyz#1119","player_id":"Shotdownboyz-1119","slug":"shotdownboyz","display_name":"ShotDownBoyz","notes":"Lieutenant","hidden_heroes":[],"locked_role":null},{"battle_tag":"Tones#11680","player_id":"Tones-11680","slug":"tones","display_name":"Tones","notes":"Captain","hidden_heroes":[],"locked_role":null},{"battle_tag":"Vanillaxbean#1858","player_id":"Vanillaxbean-1858","slug":"eddddd","display_name":"EDDDDD","notes":"","hidden_heroes":[],"locked_role":null},{"battle_tag":"FattyBom#1347","player_id":"FattyBom-1347","slug":"simplylilac","display_name":"SimplyLilac","notes":"","hidden_heroes":[],"locked_role":null},{"battle_tag":"Lank#21912","player_id":"Lank-21912","slug":"lankcity","display_name":"LankCity","notes":"","hidden_heroes":[],"locked_role":null},{"battle_tag":"Kiddo#11482","player_id":"Kiddo-11482","slug":"melrose","display_name":"Melrose","notes":"","hidden_heroes":[],"locked_role":null}],"database":"ow_stats_telegraf","request_delay_ms":150,"ui":{"top_hero_count":6},"provider":"influxdb","browser_refresh_enabled":true,"query_url":"https://owstats.jhiggins.tech/query"},"context":{},"fallback":{"generated_at":"2026-05-11T20:43:07.4120238+00:00","site_subtitle":"Database-backed competitive reporting with team and player drill-downs.","team_name":"Weasels"}}</script>
-  <script src="assets/app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>OW Live Report</title>
+    <script type="module" crossorigin src="./assets/index-DO1pv9tG.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DaUcXx0R.css">
+  </head>
+  <body>
+    <div class="owr-noise" aria-hidden="true"></div>
+    <div id="root"></div>
+  </body>
 </html>

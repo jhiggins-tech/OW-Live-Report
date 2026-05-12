@@ -1,6 +1,6 @@
 // Runtime config: a small JSON document fetched once on app boot so we can
 // change non-secret operational values (team name, query URL, ...) without
-// rebuilding the SPA. The build step generates docs/v2/data/runtime-config.json
+// rebuilding the SPA. The build step generates docs/data/runtime-config.json
 // from environment variables; see scripts/build-runtime-config.mjs.
 
 export interface RuntimeConfig {
@@ -10,7 +10,6 @@ export interface RuntimeConfig {
   };
   ui: {
     topHeroCount: number;
-    linkToV1Url: string;
   };
   influx: {
     queryUrl: string;
@@ -26,7 +25,6 @@ export const DEFAULT_CONFIG: RuntimeConfig = {
   },
   ui: {
     topHeroCount: 6,
-    linkToV1Url: '../',
   },
   influx: {
     queryUrl: 'https://owstats.jhiggins.tech/query',

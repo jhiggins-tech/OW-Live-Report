@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Reads env vars and writes public/data/runtime-config.json. Vite copies
-// public/* into docs/v2/ so the file ships at /v2/data/runtime-config.json.
+// public/* into docs/ so the file ships at /data/runtime-config.json.
 // All values fall back to DEFAULT_CONFIG in src/lib/runtimeConfig.ts when the
 // env var is unset, so this script never fails the build.
 
@@ -53,7 +53,6 @@ const config = compact({
   },
   ui: {
     topHeroCount: pickInt('TOP_HERO_COUNT', 'VITE_TOP_HERO_COUNT'),
-    linkToV1Url: pickStr('LINK_TO_V1_URL', 'VITE_LINK_TO_V1_URL'),
   },
   influx: {
     queryUrl: pickStr('INFLUX_QUERY_URL', 'VITE_INFLUX_QUERY_URL'),

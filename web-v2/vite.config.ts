@@ -5,8 +5,8 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: '../docs/v2',
-    emptyOutDir: true,
+    outDir: '../docs',
+    emptyOutDir: false,
     sourcemap: false,
     target: 'es2022',
   },
