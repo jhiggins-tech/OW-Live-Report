@@ -18,17 +18,23 @@ export async function fetchTeamWinRateOverTime(players: RosterPlayer[]): Promise
   const regex = buildPlayerRegex(players);
   const window = TIME_WINDOWS.teamSeason;
   const bucket = BUCKETS.teamWinRate;
-  const q = `SELECT mean("win_percentage") AS wp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
+  // See statCards.ts for why we read games_won/games_played at
+  // hero='all-heroes' instead of win_percentage. The underlying series is
+  // cumulative season-to-date counts sampled per snapshot; last() per
+  // bucket gives the running WR snapshot at the end of that bucket.
+  const q = `SELECT last("games_won") AS gw, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
   const body = await runInfluxQuery(q);
 
   // bucketed map: time -> playerId -> wp
   const perBucket = new Map<number, Map<string, number>>();
-  for (const s of parseSeries<{ time: number; wp: number | null }>(body)) {
+  for (const s of parseSeries<{ time: number; gw: number | null; gp: number | null }>(body)) {
     const tag = s.tags.player ?? '';
     for (const row of s.rows) {
       const t = Number(row.time);
-      const wp = safeNumber(row.wp);
-      if (!Number.isFinite(t) || wp === null) continue;
+      const gw = safeNumber(row.gw);
+      const gp = safeNumber(row.gp);
+      if (!Number.isFinite(t) || gw === null || gp === null || gp <= 0) continue;
+      const wp = (gw / gp) * 100;
       let m = perBucket.get(t);
       if (!m) { m = new Map(); perBucket.set(t, m); }
       m.set(tag, wp);

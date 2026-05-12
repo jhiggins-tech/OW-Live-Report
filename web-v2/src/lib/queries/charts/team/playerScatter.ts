@@ -12,7 +12,9 @@ export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<Playe
 
   const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
   const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
-  const gameQ = `SELECT last("win_percentage") AS wp, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "player"`;
+  // See statCards.ts for why we derive WR from games_won/games_played at
+  // hero='all-heroes' rather than reading win_percentage.
+  const gameQ = `SELECT last("games_won") AS gw, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY "player"`;
 
   const [combat, assists, game] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ]);
 
@@ -25,10 +27,12 @@ export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<Playe
     aByP.set(s.tags.player ?? '', safeNumber(s.rows[0]?.a));
   }
   const gByP = new Map<string, { wp: number | null; gp: number | null; t: number | null }>();
-  for (const s of parseStatementSeries<{ time: number; wp: number | null; gp: number | null }>(game)) {
+  for (const s of parseStatementSeries<{ time: number; gw: number | null; gp: number | null }>(game)) {
+    const gw = safeNumber(s.rows[0]?.gw);
+    const gp = safeNumber(s.rows[0]?.gp);
     gByP.set(s.tags.player ?? '', {
-      wp: safeNumber(s.rows[0]?.wp),
-      gp: safeNumber(s.rows[0]?.gp),
+      wp: gw !== null && gp !== null && gp > 0 ? (gw / gp) * 100 : null,
+      gp,
       t: safeNumber(s.rows[0]?.time),
     });
   }
