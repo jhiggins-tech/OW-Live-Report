@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
 import { useTeamTrajectories } from '../hooks/useTeamTrajectories';
+import { useTeamPlayerProfiles } from '../hooks/useTeamPlayerProfiles';
 import StatCards from '../components/StatCards';
 import RosterGrid from '../components/RosterGrid';
 import WideMatchBanner from '../components/WideMatchBanner';
@@ -12,6 +14,8 @@ import TeamWinRateChart from '../components/charts/TeamWinRateChart';
 import TeamRankChart from '../components/charts/TeamRankChart';
 import PlayerScatterChart from '../components/charts/PlayerScatterChart';
 import HeroPoolBar from '../components/charts/HeroPoolBar';
+import { fetchPlayerScatter } from '../lib/queries/charts/team/playerScatter';
+import { hashPlayerSet } from '../lib/queries/_shared';
 
 export default function OverviewPage() {
   const roster = useRoster();
@@ -25,6 +29,19 @@ export default function OverviewPage() {
   // Piggy-backs on the same three queries the team trend charts already fire,
   // so no extra Influx work.
   const { byPlayerId: trajectoryByPlayerId } = useTeamTrajectories(visible);
+  const profiles = useTeamPlayerProfiles(visible);
+  const scatterStats = useQuery({
+    queryKey: ['team', 'playerScatter', hashPlayerSet(visible)],
+    queryFn: () => fetchPlayerScatter(visible),
+    enabled: visible.length > 0,
+  });
+  const scatterStatsByPlayerId = useMemo(() => {
+    const byPlayerId: Record<string, NonNullable<typeof scatterStats.data>[number]> = {};
+    for (const stat of scatterStats.data ?? []) {
+      byPlayerId[stat.player] = stat;
+    }
+    return byPlayerId;
+  }, [scatterStats.data]);
 
   if (roster.isLoading) {
     return <div className="panel skeleton" style={{ minHeight: 300 }} />;
@@ -76,7 +93,7 @@ export default function OverviewPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Team hero pool</h2>
-          <p>Top heroes by team playtime, last 90 days</p>
+          <p>Top heroes by current-season team playtime</p>
         </header>
         <HeroPoolBar players={visible} />
       </section>
@@ -94,7 +111,12 @@ export default function OverviewPage() {
             ) : null}
           </p>
         </header>
-        <RosterGrid players={visible} trajectoryByPlayerId={trajectoryByPlayerId} />
+        <RosterGrid
+          players={visible}
+          trajectoryByPlayerId={trajectoryByPlayerId}
+          profileByPlayerId={profiles.byPlayerId}
+          statByPlayerId={scatterStatsByPlayerId}
+        />
       </section>
     </div>
   );
