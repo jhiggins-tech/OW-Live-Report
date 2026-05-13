@@ -44,12 +44,21 @@ function renderStub(shell, { title, description, image }) {
     `<meta property="og:title" content="${safeTitle}" />`,
     `<meta property="og:description" content="${safeDesc}" />`,
     `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="OW Live Report" />`,
     `<meta name="twitter:title" content="${safeTitle}" />`,
     `<meta name="twitter:description" content="${safeDesc}" />`,
   ];
   if (image) {
+    // Battle.net avatars are 128x128 PNG. Declaring width/height/type lets
+    // Facebook's crawler skip a second image fetch — without these, FB
+    // Messenger has been observed to silently drop the preview image.
     const safeImage = htmlEscape(image);
     ogTags.push(`<meta property="og:image" content="${safeImage}" />`);
+    ogTags.push(`<meta property="og:image:secure_url" content="${safeImage}" />`);
+    ogTags.push(`<meta property="og:image:type" content="image/png" />`);
+    ogTags.push(`<meta property="og:image:width" content="128" />`);
+    ogTags.push(`<meta property="og:image:height" content="128" />`);
+    ogTags.push(`<meta property="og:image:alt" content="${safeTitle}" />`);
     ogTags.push(`<meta name="twitter:image" content="${safeImage}" />`);
     ogTags.push(`<meta name="twitter:card" content="summary" />`);
   } else {
