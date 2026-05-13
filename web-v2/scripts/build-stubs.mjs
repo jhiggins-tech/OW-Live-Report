@@ -3,10 +3,12 @@
 // canonical (non-hash) URLs without 404s.
 //
 // For each public route we want crawlable, we write a near-copy of the
-// freshly-built docs/index.html with a route-specific <title> and basic
+// freshly-built docs/index.html with a route-specific <title> and
 // OpenGraph tags, so link previews (Slack, Discord, etc.) differ per URL.
-// Every stub loads the same content-hashed JS bundle Vite emitted, so the
-// SPA boots normally and the router takes over client-side.
+// Player stubs additionally get the player's Battle.net avatar URL as
+// og:image, fetched once from InfluxDB at build time. Every stub loads
+// the same content-hashed JS bundle Vite emitted, so the SPA boots
+// normally and the router takes over client-side.
 //
 // Also handles roster removals: any docs/players/<slug>/ directory whose
 // slug is not in the current roster is deleted before new stubs are written.
@@ -19,6 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(here, '..', '..', 'docs');
 const shellPath = resolve(docsDir, 'index.html');
 const rosterPath = resolve(docsDir, 'data', 'roster.json');
+const runtimeConfigPath = resolve(docsDir, 'data', 'runtime-config.json');
 
 const RESERVED_ROUTES = [
   { dir: 'settings', title: 'Settings — OW Live Report', description: 'Configure data sources and display preferences.' },
@@ -34,25 +37,85 @@ function htmlEscape(input) {
     .replace(/'/g, '&#39;');
 }
 
-function renderStub(shell, { title, description }) {
+function renderStub(shell, { title, description, image }) {
   const safeTitle = htmlEscape(title);
   const safeDesc = htmlEscape(description);
   const ogTags = [
     `<meta property="og:title" content="${safeTitle}" />`,
     `<meta property="og:description" content="${safeDesc}" />`,
     `<meta property="og:type" content="website" />`,
-    `<meta name="twitter:card" content="summary" />`,
     `<meta name="twitter:title" content="${safeTitle}" />`,
     `<meta name="twitter:description" content="${safeDesc}" />`,
-  ].join('\n    ');
-  return shell
-    .replace(/<title>[^<]*<\/title>/, `<title>${safeTitle}</title>\n    ${ogTags}`);
+  ];
+  if (image) {
+    const safeImage = htmlEscape(image);
+    ogTags.push(`<meta property="og:image" content="${safeImage}" />`);
+    ogTags.push(`<meta name="twitter:image" content="${safeImage}" />`);
+    ogTags.push(`<meta name="twitter:card" content="summary" />`);
+  } else {
+    ogTags.push(`<meta name="twitter:card" content="summary" />`);
+  }
+  return shell.replace(
+    /<title>[^<]*<\/title>/,
+    `<title>${safeTitle}</title>\n    ${ogTags.join('\n    ')}`,
+  );
 }
 
 function writeStub(routeDir, html) {
   const target = resolve(docsDir, routeDir, 'index.html');
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, html);
+}
+
+// Fetch one row per player_id from InfluxDB, returning a Map<playerId, avatarUrl>.
+// Resolves to an empty Map on any failure — preview-image is a polish layer,
+// not worth failing the whole deploy over.
+async function fetchAvatars(players) {
+  let queryUrl;
+  let database;
+  try {
+    const cfg = JSON.parse(readFileSync(runtimeConfigPath, 'utf8'));
+    queryUrl = cfg?.influx?.queryUrl;
+    database = cfg?.influx?.database;
+  } catch {
+    // runtime-config missing or unreadable; skip avatars.
+  }
+  if (!queryUrl || !database || players.length === 0) {
+    return new Map();
+  }
+  // Quote player_id values for safe InfluxQL string literals. Player IDs
+  // are derived from BattleTags (alnum + '-'), so escaping single-quotes is
+  // belt-and-braces.
+  const statements = players.map(
+    (p) =>
+      `SELECT last("avatar") AS avatar FROM "player_summary" WHERE "player"='${String(p.playerId).replace(/'/g, "\\'")}' GROUP BY "player"`,
+  );
+  const params = new URLSearchParams({ db: database, q: statements.join('; '), epoch: 'ms' });
+  const url = `${queryUrl}?${params.toString()}`;
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      console.warn(`build-stubs: avatar fetch failed (HTTP ${res.status}); skipping og:image.`);
+      return new Map();
+    }
+    const body = await res.json();
+    const out = new Map();
+    for (const result of body?.results ?? []) {
+      for (const series of result?.series ?? []) {
+        const playerId = series?.tags?.player;
+        const cols = series?.columns ?? [];
+        const avatarIdx = cols.indexOf('avatar');
+        const value = series?.values?.[0]?.[avatarIdx];
+        if (playerId && typeof value === 'string' && value) {
+          out.set(playerId, value);
+        }
+      }
+    }
+    return out;
+  } catch (err) {
+    console.warn(`build-stubs: avatar fetch errored (${err.message}); skipping og:image.`);
+    return new Map();
+  }
 }
 
 if (!existsSync(shellPath)) {
@@ -89,11 +152,16 @@ if (existsSync(playersDir)) {
   }
 }
 
+const avatars = await fetchAvatars(players);
+
 let written = 0;
+let withAvatar = 0;
 for (const player of players) {
   const title = `${player.display} — OW Live Report`;
   const description = `Overwatch hero pool, role breakdown, and performance trends for ${player.display}.`;
-  writeStub(`players/${player.slug}`, renderStub(shell, { title, description }));
+  const image = avatars.get(player.playerId) ?? null;
+  if (image) withAvatar += 1;
+  writeStub(`players/${player.slug}`, renderStub(shell, { title, description, image }));
   written += 1;
 }
 
@@ -114,4 +182,7 @@ writeFileSync(
 );
 written += 1;
 
-console.log(`build-stubs: wrote ${written} stub(s) (${players.length} player + ${RESERVED_ROUTES.length} reserved + 404).`);
+console.log(
+  `build-stubs: wrote ${written} stub(s) (${players.length} player + ${RESERVED_ROUTES.length} reserved + 404)` +
+    (withAvatar ? `, ${withAvatar}/${players.length} with avatar.` : ', no avatars fetched.'),
+);
