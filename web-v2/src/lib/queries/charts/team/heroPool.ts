@@ -2,6 +2,7 @@ import { parseSeries, runInfluxQuery } from '../../../influxClient';
 import { heroKey, prettyHeroName } from '../../../normalize/heroKey';
 import { safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
+import { currentSeasonTimePredicate } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 import { getGamemode, getTopHeroCount } from '../_constants';
 import type { HeroPoolEntry, RosterPlayer } from '../../../../types/models';
@@ -10,7 +11,8 @@ export async function fetchTeamHeroPool(players: RosterPlayer[]): Promise<HeroPo
   if (!players.length) return [];
   const regex = buildPlayerRegex(players);
   const window = TIME_WINDOWS.heroLatest;
-  const q = `SELECT sum("time_played") AS tp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY "hero"`;
+  const timeFilter = await currentSeasonTimePredicate(players, window);
+  const q = `SELECT last("time_played") AS tp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "player", "hero"`;
   const body = await runInfluxQuery(q);
 
   const totals = new Map<string, number>();

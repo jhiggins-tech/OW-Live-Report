@@ -9,6 +9,7 @@ import { heroKey, prettyHeroName } from '../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../normalize/kda';
 import { rankOrdinal, rankLabelFromOrdinal } from '../normalize/rankOrdinal';
 import { buildPlayerRegex } from './_shared';
+import { currentSeasonTimePredicate } from './seasonWindow';
 import { getGamemode } from './charts/_constants';
 import type { Role, RosterPlayer } from '../../types/models';
 
@@ -62,10 +63,11 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
   const regex = buildPlayerRegex(players);
   const gm = getGamemode();
   const window = '90d';
+  const timeFilter = await currentSeasonTimePredicate(players, window);
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND time > now() - ${window} GROUP BY "player", "hero"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND time > now() - ${window} GROUP BY "player", "hero"`;
-  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND time > now() - ${window} GROUP BY "player", "hero"`;
+  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND ${timeFilter} GROUP BY "player", "hero"`;
+  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND ${timeFilter} GROUP BY "player", "hero"`;
+  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND ${timeFilter} GROUP BY "player", "hero"`;
   const rankQ = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player" =~ /${regex}/ GROUP BY "player", "role"`;
 
   const [combat, assists, game, ranks] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ, rankQ]);
