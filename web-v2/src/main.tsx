@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { RouterProvider, createHashRouter } from 'react-router-dom';
+import { RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
@@ -37,19 +37,30 @@ const persister = createSyncStoragePersister({
   throttleTime: 1000,
 });
 
-const router = createHashRouter([
-  {
-    path: '/',
-    element: <App />,
-    children: [
-      { index: true, element: <OverviewPage /> },
-      { path: 'players/:slug', element: <PlayerPage /> },
-      { path: 'optimizer', element: <OptimizerPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: '*', element: <NotFoundPage /> },
-    ],
-  },
-]);
+// Rewrite legacy hash bookmarks (`/#/players/kie`) to canonical paths
+// (`/OW-Live-Report/players/kie`) before the router reads location.
+if (typeof window !== 'undefined' && window.location.hash.startsWith('#/')) {
+  const target = window.location.hash.slice(2); // strip '#/'
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  window.history.replaceState(null, '', `${base}/${target}`);
+}
+
+const router = createBrowserRouter(
+  [
+    {
+      path: '/',
+      element: <App />,
+      children: [
+        { index: true, element: <OverviewPage /> },
+        { path: 'players/:slug', element: <PlayerPage /> },
+        { path: 'optimizer', element: <OptimizerPage /> },
+        { path: 'settings', element: <SettingsPage /> },
+        { path: '*', element: <NotFoundPage /> },
+      ],
+    },
+  ],
+  { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' },
+);
 
 // Wait for runtime-config.json before mounting so any module that calls
 // getRuntimeConfig() at render time sees the loaded values, not defaults.
