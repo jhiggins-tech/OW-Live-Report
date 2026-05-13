@@ -6,9 +6,10 @@
   "scripts": {
     "build:roster": "node scripts/build-roster.mjs",
     "build:config": "node scripts/build-runtime-config.mjs",
+    "build:stubs": "node scripts/build-stubs.mjs",
     "prebuild": "pnpm run build:roster && pnpm run build:config",
     "dev": "pnpm run prebuild && vite",
-    "build": "pnpm run prebuild && tsc --noEmit && vite build",
+    "build": "pnpm run prebuild && tsc --noEmit && vite build && pnpm run build:stubs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
