@@ -1,11 +1,33 @@
 import { useQuery } from '@tanstack/react-query';
-import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts';
+import { useMemo } from 'react';
+import { CartesianGrid, Cell, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts';
 import { Link } from 'react-router-dom';
 import { fetchPlayerScatter } from '../../lib/queries/charts/team/playerScatter';
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import type { RosterPlayer } from '../../types/models';
 
+const PLAYER_COLORS = [
+  '#59c2ff',
+  '#ff7f73',
+  '#41d8b7',
+  '#ffb84f',
+  '#b690ff',
+  '#f06bc4',
+  '#8bd450',
+  '#ff9f5a',
+  '#68e7ff',
+  '#d5e85b',
+];
+
 export default function PlayerScatterChart({ players }: { players: RosterPlayer[] }) {
+  const colorBySlug = useMemo(() => {
+    const m = new Map<string, string>();
+    players.forEach((p, i) => {
+      m.set(p.slug, PLAYER_COLORS[i % PLAYER_COLORS.length]!);
+    });
+    return m;
+  }, [players]);
+
   const query = useQuery({
     queryKey: ['team', 'playerScatter', hashPlayerSet(players)],
     queryFn: () => fetchPlayerScatter(players),
@@ -14,6 +36,10 @@ export default function PlayerScatterChart({ players }: { players: RosterPlayer[
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load player scatter.</div>;
   const points = (query.data ?? []).filter((p) => p.kda !== null && p.winRate !== null);
+  const coloredPoints = points.map((p) => ({
+    ...p,
+    color: colorBySlug.get(p.slug) ?? PLAYER_COLORS[0]!,
+  }));
   if (!points.length) return <div className="empty">No player data in last 7 days.</div>;
 
   return (
@@ -53,13 +79,28 @@ export default function PlayerScatterChart({ players }: { players: RosterPlayer[
                 return display;
               }}
             />
-            <Scatter data={points} fill="var(--sky)" stroke="var(--mint)" />
+            <Scatter data={coloredPoints}>
+              {coloredPoints.map((p) => (
+                <Cell
+                  key={p.slug}
+                  fill={p.color}
+                  stroke={p.color}
+                  strokeOpacity={0.9}
+                  fillOpacity={0.86}
+                />
+              ))}
+            </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-        {points.map((p) => (
-          <Link key={p.slug} to={`/players/${p.slug}`} style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+      <div className="scatter-legend">
+        {coloredPoints.map((p) => (
+          <Link key={p.slug} to={`/players/${p.slug}`} className="scatter-legend-item">
+            <span
+              className="scatter-legend-swatch"
+              style={{ backgroundColor: p.color, borderColor: p.color }}
+              aria-hidden="true"
+            />
             {p.display}
           </Link>
         ))}
