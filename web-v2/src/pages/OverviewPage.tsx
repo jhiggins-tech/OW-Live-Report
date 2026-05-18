@@ -45,15 +45,15 @@ export default function OverviewPage() {
     return byPlayerId;
   }, [scatterStats.data]);
 
+  // fetchSupportingStats returns a Map; convert to a plain object here so the
+  // persisted query cache stays JSON-serialisable (a Map serialises to {}).
   const supporting = useQuery({
     queryKey: ['team', 'supportingStats', hashPlayerSet(visible)],
-    queryFn: () => fetchSupportingStats(visible.map((p) => p.playerId)),
+    queryFn: async () =>
+      Object.fromEntries(await fetchSupportingStats(visible.map((p) => p.playerId))),
     enabled: visible.length > 0,
   });
-  const supportingByPlayerId = useMemo(
-    () => Object.fromEntries(supporting.data ?? []),
-    [supporting.data],
-  );
+  const supportingByPlayerId = supporting.data ?? {};
 
   if (roster.isLoading) {
     return <div className="panel skeleton" style={{ minHeight: 300 }} />;
