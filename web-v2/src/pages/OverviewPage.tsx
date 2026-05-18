@@ -14,6 +14,7 @@ import TeamWinRateChart from '../components/charts/TeamWinRateChart';
 import TeamRankChart from '../components/charts/TeamRankChart';
 import PlayerScatterChart from '../components/charts/PlayerScatterChart';
 import HeroPoolBar from '../components/charts/HeroPoolBar';
+import TeamHealingChart from '../components/charts/TeamHealingChart';
 import { fetchPlayerScatter } from '../lib/queries/charts/team/playerScatter';
 import { fetchSupportingStats } from '../lib/queries/supportingStats';
 import { hashPlayerSet } from '../lib/queries/_shared';
@@ -107,6 +108,14 @@ export default function OverviewPage() {
           <p>Top heroes by current-season team playtime</p>
         </header>
         <HeroPoolBar players={visible} />
+      </section>
+
+      <section className="panel">
+        <header className="section-head">
+          <h2>Healing per 10 min</h2>
+          <p>All-heroes career average, by player</p>
+        </header>
+        <TeamHealingChart players={visible} />
       </section>
 
       <section className="panel">
