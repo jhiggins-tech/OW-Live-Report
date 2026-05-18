@@ -26,15 +26,16 @@ export default function TeamHealingChart({ players }: { players: RosterPlayer[] 
   return (
     <div className="chart-wrap tall">
       <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 12, right: 24, bottom: 64, left: 8 }}>
+        <BarChart data={data} margin={{ top: 12, right: 24, bottom: 96, left: 8 }}>
           <CartesianGrid stroke="rgba(145, 177, 214, 0.14)" />
           <XAxis
-            dataKey="prettyName"
+            dataKey="label"
             stroke="var(--muted)"
             interval={0}
             angle={-45}
             textAnchor="end"
-            height={64}
+            height={96}
+            tick={{ fontSize: 11 }}
           />
           <YAxis stroke="var(--muted)" tickFormatter={(v) => fmtCompact(Number(v))} />
           <Tooltip
