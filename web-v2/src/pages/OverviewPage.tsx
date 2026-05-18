@@ -15,6 +15,7 @@ import TeamRankChart from '../components/charts/TeamRankChart';
 import PlayerScatterChart from '../components/charts/PlayerScatterChart';
 import HeroPoolBar from '../components/charts/HeroPoolBar';
 import { fetchPlayerScatter } from '../lib/queries/charts/team/playerScatter';
+import { fetchSupportingStats } from '../lib/queries/supportingStats';
 import { hashPlayerSet } from '../lib/queries/_shared';
 
 export default function OverviewPage() {
@@ -42,6 +43,16 @@ export default function OverviewPage() {
     }
     return byPlayerId;
   }, [scatterStats.data]);
+
+  const supporting = useQuery({
+    queryKey: ['team', 'supportingStats', hashPlayerSet(visible)],
+    queryFn: () => fetchSupportingStats(visible.map((p) => p.playerId)),
+    enabled: visible.length > 0,
+  });
+  const supportingByPlayerId = useMemo(
+    () => Object.fromEntries(supporting.data ?? []),
+    [supporting.data],
+  );
 
   if (roster.isLoading) {
     return <div className="panel skeleton" style={{ minHeight: 300 }} />;
@@ -116,6 +127,7 @@ export default function OverviewPage() {
           trajectoryByPlayerId={trajectoryByPlayerId}
           profileByPlayerId={profiles.byPlayerId}
           statByPlayerId={scatterStatsByPlayerId}
+          supportingByPlayerId={supportingByPlayerId}
         />
       </section>
     </div>

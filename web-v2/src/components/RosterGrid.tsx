@@ -2,12 +2,14 @@ import { Link } from 'react-router-dom';
 import type { PlayerStatPoint, RosterPlayer } from '../types/models';
 import type { TrajectoryResult } from '../lib/trajectory';
 import type { OverFastPlayerSummary } from '../lib/queries/overfastPlayerSummary';
+import type { SupportingStats } from '../lib/queries/supportingStats';
 
 interface Props {
   players: RosterPlayer[];
   trajectoryByPlayerId?: Record<string, TrajectoryResult>;
   profileByPlayerId?: Record<string, OverFastPlayerSummary>;
   statByPlayerId?: Record<string, PlayerStatPoint>;
+  supportingByPlayerId?: Record<string, SupportingStats>;
 }
 
 const LABEL_TONE: Record<string, 'support' | 'damage' | 'tank'> = {
@@ -29,11 +31,19 @@ function fmtWinRate(value: number | null | undefined): string {
   return typeof value === 'number' ? `${value.toFixed(1)}%` : '—';
 }
 
+function fmtCompact(value: number | null | undefined): string {
+  if (typeof value !== 'number') return '—';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return Math.round(value).toString();
+}
+
 export default function RosterGrid({
   players,
   trajectoryByPlayerId,
   profileByPlayerId,
   statByPlayerId,
+  supportingByPlayerId,
 }: Props) {
   if (!players.length) {
     return <div className="empty">Roster is empty — check config/tracked-battletags.txt</div>;
@@ -44,6 +54,7 @@ export default function RosterGrid({
         const traj = trajectoryByPlayerId?.[p.playerId];
         const profile = profileByPlayerId?.[p.playerId];
         const stats = statByPlayerId?.[p.playerId];
+        const supporting = supportingByPlayerId?.[p.playerId];
         return (
           <Link
             key={p.slug}
@@ -76,7 +87,7 @@ export default function RosterGrid({
                 </div>
               ) : null}
             </div>
-            <div className="roster-card-stats" aria-label={`${p.display} KDA and win rate`}>
+            <div className="roster-card-stats" aria-label={`${p.display} performance stats`}>
               <div className="roster-card-stat">
                 <span>KDA</span>
                 <strong>{fmtKda(stats?.kda)}</strong>
@@ -84,6 +95,14 @@ export default function RosterGrid({
               <div className="roster-card-stat">
                 <span>Win</span>
                 <strong>{fmtWinRate(stats?.winRate)}</strong>
+              </div>
+              <div className="roster-card-stat">
+                <span>A / Death</span>
+                <strong>{fmtKda(supporting?.assistsPerDeath)}</strong>
+              </div>
+              <div className="roster-card-stat">
+                <span>Heal / 10m</span>
+                <strong>{fmtCompact(supporting?.healingPer10Min)}</strong>
               </div>
             </div>
           </Link>
