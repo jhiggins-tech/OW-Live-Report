@@ -113,7 +113,7 @@ export default function OverviewPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Healing per 10 min</h2>
-          <p>All-heroes career average, by player</p>
+          <p>All-heroes career average, by hero — top 15</p>
         </header>
         <TeamHealingChart players={visible} />
       </section>
