@@ -3,6 +3,13 @@ import { fetchTeamStatCards } from '../lib/queries/charts/team/statCards';
 import { hashPlayerSet } from '../lib/queries/_shared';
 import type { RosterPlayer } from '../types/models';
 
+function formatCompact(value: number | null): string {
+  if (value === null) return '—';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return Math.round(value).toString();
+}
+
 function formatRelative(time: number | null): string {
   if (time === null) return 'no data';
   const delta = Date.now() - time;
@@ -25,7 +32,7 @@ export default function StatCards({ players }: { players: RosterPlayer[] }) {
   if (query.isLoading) {
     return (
       <div className="grid cols-4">
-        {[0, 1, 2, 3].map((i) => (<div className="panel skeleton" key={i} />))}
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (<div className="panel skeleton" key={i} />))}
       </div>
     );
   }
@@ -51,6 +58,21 @@ export default function StatCards({ players }: { players: RosterPlayer[] }) {
         <div className="label">Team win rate</div>
         <div className="value">{d.teamWinRate === null ? '—' : `${d.teamWinRate.toFixed(1)}%`}</div>
         <div className="delta flat">competitive</div>
+      </div>
+      <div className="panel stat-card">
+        <div className="label">Team avg assists/death</div>
+        <div className="value">{d.teamAssistsPerDeath === null ? '—' : d.teamAssistsPerDeath.toFixed(2)}</div>
+        <div className="delta flat">all heroes</div>
+      </div>
+      <div className="panel stat-card">
+        <div className="label">Team avg heal / 10 min</div>
+        <div className="value">{formatCompact(d.teamHealingPer10Min)}</div>
+        <div className="delta flat">all heroes</div>
+      </div>
+      <div className="panel stat-card">
+        <div className="label">Team healing done</div>
+        <div className="value">{formatCompact(d.teamHealingDone)}</div>
+        <div className="delta flat">career total</div>
       </div>
       <div className="panel stat-card">
         <div className="label">Newest snapshot</div>

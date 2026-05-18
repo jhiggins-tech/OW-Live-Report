@@ -1,6 +1,7 @@
 import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
 import { buildPlayerRegex } from '../../_shared';
+import { fetchSupportingStats } from '../../supportingStats';
 import { TIME_WINDOWS } from '../_constants';
 import { getGamemode } from '../_constants';
 import type { RosterPlayer } from '../../../../types/models';
@@ -10,12 +11,24 @@ export interface TeamStatCards {
   freshPlayers: number;
   teamKda: number | null;
   teamWinRate: number | null;
+  teamAssistsPerDeath: number | null;
+  teamHealingDone: number | null;
+  teamHealingPer10Min: number | null;
   newestSeenAt: number | null;
 }
 
 export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamStatCards> {
   if (!players.length) {
-    return { trackedPlayers: 0, freshPlayers: 0, teamKda: null, teamWinRate: null, newestSeenAt: null };
+    return {
+      trackedPlayers: 0,
+      freshPlayers: 0,
+      teamKda: null,
+      teamWinRate: null,
+      teamAssistsPerDeath: null,
+      teamHealingDone: null,
+      teamHealingPer10Min: null,
+      newestSeenAt: null,
+    };
   }
   const regex = buildPlayerRegex(players);
   const window = TIME_WINDOWS.statCards;
@@ -32,7 +45,10 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   // from player_summary (there is no last_updated_at field on the schema).
   const summaryQ = `SELECT last("username") AS u FROM "player_summary" WHERE "player" =~ /${regex}/ GROUP BY "player"`;
 
-  const [combat, assists, game, summary] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ, summaryQ]);
+  const [[combat, assists, game, summary], supporting] = await Promise.all([
+    runInfluxMultiQuery([combatQ, assistsQ, gameQ, summaryQ]),
+    fetchSupportingStats(players.map((p) => p.playerId)),
+  ]);
 
   const eByPlayer = new Map<string, number>();
   const dByPlayer = new Map<string, number>();
@@ -79,6 +95,23 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
     if (typeof wr === 'number') wrs.push(wr);
   }
 
+  // Assists/death and heal-rate average across players; healing done is a
+  // team total since per-player career totals are meaningful to sum.
+  const apds: number[] = [];
+  const heal10s: number[] = [];
+  let healingDoneTotal = 0;
+  let healingDoneSeen = false;
+  for (const p of players) {
+    const s = supporting.get(p.playerId);
+    if (!s) continue;
+    if (s.assistsPerDeath !== null) apds.push(s.assistsPerDeath);
+    if (s.healingPer10Min !== null) heal10s.push(s.healingPer10Min);
+    if (s.healingDone !== null) {
+      healingDoneTotal += s.healingDone;
+      healingDoneSeen = true;
+    }
+  }
+
   const freshCutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
   let freshPlayers = 0;
   for (const p of players) {
@@ -91,6 +124,9 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
     freshPlayers,
     teamKda: kdas.length ? kdas.reduce((a, b) => a + b, 0) / kdas.length : null,
     teamWinRate: wrs.length ? wrs.reduce((a, b) => a + b, 0) / wrs.length : null,
+    teamAssistsPerDeath: apds.length ? apds.reduce((a, b) => a + b, 0) / apds.length : null,
+    teamHealingDone: healingDoneSeen ? healingDoneTotal : null,
+    teamHealingPer10Min: heal10s.length ? heal10s.reduce((a, b) => a + b, 0) / heal10s.length : null,
     newestSeenAt,
   };
 }

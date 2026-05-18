@@ -11,6 +11,7 @@ import HeroUsageStacked from '../components/charts/HeroUsageStacked';
 import HeroPerfLines from '../components/charts/HeroPerfLines';
 import HeroLeaderboard from '../components/HeroLeaderboard';
 import TrajectoryPanel from '../components/TrajectoryPanel';
+import PlayerSupportingStats from '../components/PlayerSupportingStats';
 
 function useHiddenHeroes(slug: string, adminDefaults: readonly string[] | undefined): {
   hidden: Set<string>;
@@ -125,6 +126,8 @@ export default function PlayerPage() {
           <PlayerWinRateTrend playerId={player.playerId} />
         </section>
       </div>
+
+      <PlayerSupportingStats playerId={player.playerId} />
 
       <section className="panel">
         <header className="section-head">
