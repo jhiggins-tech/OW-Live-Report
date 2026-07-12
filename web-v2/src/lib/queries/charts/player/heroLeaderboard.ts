@@ -55,7 +55,10 @@ export async function fetchPlayerHeroLeaderboard(playerId: string): Promise<Hero
       prettyName: prettyHeroName(hero),
       gamesPlayed: gp,
       winRate: gameStats.wp,
-      kda: kdaFrom(combat?.e, assists, combat?.d),
+      // The hero has a game row this window, so counters absent from the
+      // season profile are reported zeros (Blizzard omits zero-valued stats),
+      // not missing data.
+      kda: kdaFrom(combat?.e ?? 0, assists ?? 0, combat?.d ?? 0),
       timePlayedSeconds: gameStats.tp ?? 0,
     });
   }
