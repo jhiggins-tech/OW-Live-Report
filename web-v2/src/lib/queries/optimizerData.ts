@@ -162,7 +162,10 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
             winNum += stats.wp * gp;
             winDen += gp;
           }
-          const heroKdaValue = kdaFrom(stats.e, stats.a, stats.d);
+          // The hero passed the games/time-played guard above, so it has a
+          // game row this window and counters absent from the season profile
+          // are reported zeros (Blizzard omits zero-valued stats).
+          const heroKdaValue = kdaFrom(stats.e ?? 0, stats.a ?? 0, stats.d ?? 0);
           if (heroKdaValue !== null && gp > 0) {
             kdaNum += heroKdaValue * gp;
             kdaDen += gp;
