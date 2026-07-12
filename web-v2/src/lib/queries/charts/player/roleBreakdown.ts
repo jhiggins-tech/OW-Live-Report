@@ -70,7 +70,11 @@ export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBr
       if (heroRole(h) !== role) continue;
       const gp = stats.gp ?? 0;
       const tp = stats.tp ?? 0;
-      const kda = kdaFrom(stats.e, stats.a, stats.d);
+      // A hero with a game or combat row this window demonstrably has career
+      // data, so counters absent from the season profile are reported zeros
+      // (Blizzard omits zero-valued stats), not missing data.
+      const played = stats.gp !== null || stats.e !== null || stats.d !== null;
+      const kda = played ? kdaFrom(stats.e ?? 0, stats.a ?? 0, stats.d ?? 0) : null;
       gamesPlayed += gp;
       timePlayed += tp;
       if (stats.wp !== null && gp > 0) {

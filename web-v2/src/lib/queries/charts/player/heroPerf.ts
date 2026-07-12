@@ -56,7 +56,10 @@ export async function fetchPlayerHeroPerf(playerId: string): Promise<PlayerHeroP
       const c2 = byTime.get(time);
       const a2 = assistsByHero.get(key)?.get(time) ?? null;
       if (!c2) continue;
-      byHero[key] = kdaFrom(c2.e, a2, c2.d);
+      // A combat row exists in this bucket, so counters absent from the
+      // season profile (assists on assist-less heroes, eliminations on
+      // zero-elim windows) are reported zeros, not missing data.
+      byHero[key] = kdaFrom(c2.e ?? 0, a2 ?? 0, c2.d ?? 0);
     }
     return { time, byHero };
   });
