@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { PlayerStatPoint, RosterPlayer } from '../types/models';
+import type { RosterPlayer } from '../types/models';
 import type { TrajectoryResult } from '../lib/trajectory';
 import type { OverFastPlayerSummary } from '../lib/queries/overfastPlayerSummary';
 import type { SupportingStats } from '../lib/queries/supportingStats';
@@ -8,7 +8,6 @@ interface Props {
   players: RosterPlayer[];
   trajectoryByPlayerId?: Record<string, TrajectoryResult>;
   profileByPlayerId?: Record<string, OverFastPlayerSummary>;
-  statByPlayerId?: Record<string, PlayerStatPoint>;
   supportingByPlayerId?: Record<string, SupportingStats>;
 }
 
@@ -42,7 +41,6 @@ export default function RosterGrid({
   players,
   trajectoryByPlayerId,
   profileByPlayerId,
-  statByPlayerId,
   supportingByPlayerId,
 }: Props) {
   if (!players.length) {
@@ -53,7 +51,6 @@ export default function RosterGrid({
       {players.map((p) => {
         const traj = trajectoryByPlayerId?.[p.playerId];
         const profile = profileByPlayerId?.[p.playerId];
-        const stats = statByPlayerId?.[p.playerId];
         const supporting = supportingByPlayerId?.[p.playerId];
         return (
           <Link
@@ -90,11 +87,11 @@ export default function RosterGrid({
             <div className="roster-card-stats" aria-label={`${p.display} performance stats`}>
               <div className="roster-card-stat">
                 <span>KDA</span>
-                <strong>{fmtKda(stats?.kda)}</strong>
+                <strong>{fmtKda(supporting?.kda)}</strong>
               </div>
               <div className="roster-card-stat">
                 <span>Win</span>
-                <strong>{fmtWinRate(stats?.winRate)}</strong>
+                <strong>{fmtWinRate(supporting?.winRate)}</strong>
               </div>
               <div className="roster-card-stat">
                 <span>A / Death</span>

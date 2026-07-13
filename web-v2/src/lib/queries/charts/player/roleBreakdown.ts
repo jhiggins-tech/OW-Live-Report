@@ -64,8 +64,10 @@ export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBr
     let timePlayed = 0;
     let weightedWinTotal = 0;
     let weightedWinDenom = 0;
-    let weightedKdaTotal = 0;
-    let weightedKdaDenom = 0;
+    let eliminations = 0;
+    let assists = 0;
+    let deaths = 0;
+    let hasKdaData = false;
     for (const [h, stats] of byHero) {
       if (heroRole(h) !== role) continue;
       const gp = stats.gp ?? 0;
@@ -74,21 +76,24 @@ export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBr
       // data, so counters absent from the season profile are reported zeros
       // (Blizzard omits zero-valued stats), not missing data.
       const played = stats.gp !== null || stats.e !== null || stats.d !== null;
-      const kda = played ? kdaFrom(stats.e ?? 0, stats.a ?? 0, stats.d ?? 0) : null;
       gamesPlayed += gp;
       timePlayed += tp;
       if (stats.wp !== null && gp > 0) {
         weightedWinTotal += stats.wp * gp;
         weightedWinDenom += gp;
       }
-      if (kda !== null && gp > 0) {
-        weightedKdaTotal += kda * gp;
-        weightedKdaDenom += gp;
+      if (played) {
+        eliminations += stats.e ?? 0;
+        assists += stats.a ?? 0;
+        deaths += stats.d ?? 0;
+        hasKdaData = true;
       }
     }
     return {
       role,
-      kda: weightedKdaDenom > 0 ? weightedKdaTotal / weightedKdaDenom : null,
+      // Ratios must be calculated from summed counters. Averaging hero KDAs
+      // (even when game-weighted) overweights heroes with few deaths.
+      kda: hasKdaData ? kdaFrom(eliminations, assists, deaths) : null,
       winRate: weightedWinDenom > 0 ? weightedWinTotal / weightedWinDenom : null,
       gamesPlayed: gamesPlayed > 0 ? gamesPlayed : null,
       timePlayedSeconds: timePlayed > 0 ? timePlayed : null,

@@ -17,8 +17,8 @@ export async function fetchTeamKdaOverTime(players: RosterPlayer[]): Promise<Tea
   const window = TIME_WINDOWS.teamSeason;
   const bucket = BUCKETS.teamKda;
 
-  const combatQ = `SELECT mean("eliminations") AS e, mean("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
-  const assistsQ = `SELECT mean("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
+  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
+  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
 
   const [combat, assists] = await runInfluxMultiQuery([combatQ, assistsQ]);
 

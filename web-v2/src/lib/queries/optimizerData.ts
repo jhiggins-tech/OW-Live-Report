@@ -142,7 +142,7 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
       support: [],
     };
 
-    // Roll up per-hero stats into per-role bins, weighted by games_played.
+    // Roll up per-hero stats into per-role bins.
     const heroes = heroData.get(p.playerId);
     if (heroes) {
       for (const role of ROLES) {
@@ -150,8 +150,10 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
         let timePlayed = 0;
         let winNum = 0;
         let winDen = 0;
-        let kdaNum = 0;
-        let kdaDen = 0;
+        let eliminations = 0;
+        let assists = 0;
+        let deaths = 0;
+        let hasKdaData = false;
         for (const [h, stats] of heroes) {
           if (heroRole(h) !== role) continue;
           const gp = stats.gp ?? 0;
@@ -166,10 +168,10 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
           // game row this window and counters absent from the season profile
           // are reported zeros (Blizzard omits zero-valued stats).
           const heroKdaValue = kdaFrom(stats.e ?? 0, stats.a ?? 0, stats.d ?? 0);
-          if (heroKdaValue !== null && gp > 0) {
-            kdaNum += heroKdaValue * gp;
-            kdaDen += gp;
-          }
+          eliminations += stats.e ?? 0;
+          assists += stats.a ?? 0;
+          deaths += stats.d ?? 0;
+          hasKdaData = true;
           heroesByRole[role].push({
             hero: h,
             prettyName: prettyHeroName(h),
@@ -183,7 +185,9 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
         byRole[role].gamesPlayed = gamesPlayed;
         byRole[role].timePlayedSeconds = timePlayed;
         byRole[role].winRate = winDen > 0 ? winNum / winDen : null;
-        byRole[role].kda = kdaDen > 0 ? kdaNum / kdaDen : null;
+        // Aggregate the underlying counters before dividing; averaging hero
+        // ratios produces a biased role KDA.
+        byRole[role].kda = hasKdaData ? kdaFrom(eliminations, assists, deaths) : null;
 
         // Compute pickrate against the role's denominator and pick top N.
         const roleTime = timePlayed;

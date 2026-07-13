@@ -106,6 +106,8 @@ export default function PlayerPage() {
         </div>
       </section>
 
+      <PlayerSupportingStats playerId={player.playerId} />
+
       <TrajectoryPanel playerId={player.playerId} displayName={player.display} />
 
       <section className="panel">
@@ -126,8 +128,6 @@ export default function PlayerPage() {
           <PlayerWinRateTrend playerId={player.playerId} />
         </section>
       </div>
-
-      <PlayerSupportingStats playerId={player.playerId} />
 
       <section className="panel">
         <header className="section-head">

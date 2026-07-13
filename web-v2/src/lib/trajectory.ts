@@ -82,15 +82,13 @@ function buildSignal(
 }
 
 function narrativeFor(displayName: string, label: TrajectoryLabel, latest: TrajectoryInputs['latest']): string {
-  const kda = latest.kda === null ? '—' : latest.kda.toFixed(2);
-  const winRate = latest.winRate === null ? '—' : latest.winRate.toFixed(1);
   switch (label) {
     case 'up':
-      return `${displayName} is trending upward with a current KDA of ${kda} and win rate at ${winRate}%. Rank reads as ${latest.rankLabel}, and the recent direction is strong enough to project cautious improvement.`;
+      return `${displayName} is trending upward. Rank reads as ${latest.rankLabel}, and the recent direction across rank, KDA, and win rate is strong enough to project cautious improvement.`;
     case 'down':
-      return `${displayName} is sliding right now. KDA sits at ${kda}, win rate is ${winRate}%, and rank context is ${latest.rankLabel}. The next sessions should focus on stabilizing execution before expecting visible ladder gains.`;
+      return `${displayName} is sliding right now, with rank context at ${latest.rankLabel}. The next sessions should focus on stabilizing execution before expecting visible ladder gains.`;
     default:
-      return `${displayName} looks mostly stable. KDA is ${kda}, win rate is ${winRate}%, and current rank context is ${latest.rankLabel}. Progress is present but not accelerating enough yet to read as a decisive climb.`;
+      return `${displayName} looks mostly stable, with current rank context at ${latest.rankLabel}. Progress is present but not accelerating enough yet to read as a decisive climb.`;
   }
 }
 
