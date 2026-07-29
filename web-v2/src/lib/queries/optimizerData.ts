@@ -1,16 +1,16 @@
-// Fetches everything the team optimizer needs in a single multi-statement
-// HTTP request: per-(player, hero) latest stats + per-(player, role) latest
-// rank. The optimizer bucket-rolls the per-hero stats up to per-role on the
-// JS side using HERO_CATALOG, matching the role-breakdown chart's strategy.
+// Loads everything the team optimizer needs from the snapshot datasets:
+// per-(player, hero) latest stats + per-(player, role) latest rank. The
+// optimizer bucket-rolls the per-hero stats up to per-role on the JS side
+// using HERO_CATALOG, matching the role-breakdown chart's strategy.
 
-import { parseStatementSeries, runInfluxMultiQuery } from '../influxClient';
+import { loadCareerLatest, loadRankCurrent } from '../snapshotClient';
 import { heroRole } from '../heroCatalog';
 import { heroKey, prettyHeroName } from '../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../normalize/kda';
 import { rankOrdinal, rankLabelFromOrdinal } from '../normalize/rankOrdinal';
-import { buildPlayerRegex } from './_shared';
-import { currentSeasonTimePredicate } from './seasonWindow';
-import { getGamemode } from './charts/_constants';
+import { playerIdSet } from './_shared';
+import { currentSeasonCutoff } from './seasonWindow';
+import { TIME_WINDOWS } from './charts/_constants';
 import type { Role, RosterPlayer } from '../../types/models';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
@@ -60,17 +60,10 @@ function blankRoleStats(role: Role): PlayerRoleStats {
 
 export async function fetchOptimizerData(players: RosterPlayer[]): Promise<PlayerOptimizerData[]> {
   if (!players.length) return [];
-  const regex = buildPlayerRegex(players);
-  const gm = getGamemode();
-  const window = '90d';
-  const timeFilter = await currentSeasonTimePredicate(players, window);
+  const ids = playerIdSet(players);
+  const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.playerSeason);
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND ${timeFilter} GROUP BY "player", "hero"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND ${timeFilter} GROUP BY "player", "hero"`;
-  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${gm}' AND ${timeFilter} GROUP BY "player", "hero"`;
-  const rankQ = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player" =~ /${regex}/ GROUP BY "player", "role"`;
-
-  const [combat, assists, game, ranks] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ, rankQ]);
+  const [career, ranks] = await Promise.all([loadCareerLatest(), loadRankCurrent()]);
 
   interface PerHero {
     e: number | null;
@@ -82,52 +75,34 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
   }
   // Per-player, per-hero accumulator.
   const heroData = new Map<string, Map<string, PerHero>>();
-  const ensure = (pid: string, hero: string): PerHero => {
-    let m = heroData.get(pid);
-    if (!m) { m = new Map(); heroData.set(pid, m); }
-    let h = m.get(hero);
-    if (!h) { h = { e: null, d: null, a: null, gp: null, wp: null, tp: null }; m.set(hero, h); }
-    return h;
-  };
-
-  for (const s of parseStatementSeries<{ e: number | null; d: number | null }>(combat)) {
-    const pid = s.tags.player ?? '';
-    const h = heroKey(s.tags.hero ?? '');
+  for (const r of career.rows) {
+    if (!ids.has(r.player) || r.time < cutoff) continue;
+    const h = heroKey(r.hero);
     if (!h || h === 'all-heroes') continue;
-    const r = ensure(pid, h);
-    r.e = safeNumber(s.rows[0]?.e);
-    r.d = safeNumber(s.rows[0]?.d);
-  }
-  for (const s of parseStatementSeries<{ a: number | null }>(assists)) {
-    const pid = s.tags.player ?? '';
-    const h = heroKey(s.tags.hero ?? '');
-    if (!h || h === 'all-heroes') continue;
-    ensure(pid, h).a = safeNumber(s.rows[0]?.a);
-  }
-  for (const s of parseStatementSeries<{ gp: number | null; wp: number | null; tp: number | null }>(game)) {
-    const pid = s.tags.player ?? '';
-    const h = heroKey(s.tags.hero ?? '');
-    if (!h || h === 'all-heroes') continue;
-    const r = ensure(pid, h);
-    r.gp = safeNumber(s.rows[0]?.gp);
-    r.wp = safeNumber(s.rows[0]?.wp);
-    r.tp = safeNumber(s.rows[0]?.tp);
+    let m = heroData.get(r.player);
+    if (!m) { m = new Map(); heroData.set(r.player, m); }
+    m.set(h, {
+      e: safeNumber(r.eliminations),
+      d: safeNumber(r.deaths),
+      a: safeNumber(r.assists),
+      gp: safeNumber(r.gamesPlayed),
+      wp: safeNumber(r.winPercentage),
+      tp: safeNumber(r.timePlayed),
+    });
   }
 
   // Latest rank per (player, role).
   const rankByPlayerRole = new Map<string, Partial<Record<Role, { ordinal: number; label: string }>>>();
-  for (const s of parseStatementSeries<{ tier: number | string | null; division: number | string | null }>(ranks)) {
-    const pid = s.tags.player ?? '';
-    const roleRaw = (s.tags.role ?? '').toLowerCase();
+  for (const r of ranks.rows) {
+    if (!ids.has(r.player)) continue;
+    const roleRaw = r.role.toLowerCase();
     const role: Role | null = roleRaw === 'dps' ? 'damage' : (ROLES as readonly string[]).includes(roleRaw) ? (roleRaw as Role) : null;
     if (!role) continue;
-    const row = s.rows[0];
-    if (!row) continue;
-    const ord = rankOrdinal(row.tier, row.division);
+    const ord = rankOrdinal(r.tier, r.division);
     if (ord === null) continue;
-    const map = rankByPlayerRole.get(pid) ?? {};
+    const map = rankByPlayerRole.get(r.player) ?? {};
     map[role] = { ordinal: ord, label: rankLabelFromOrdinal(ord) };
-    rankByPlayerRole.set(pid, map);
+    rankByPlayerRole.set(r.player, map);
   }
 
   return players.map((p) => {
@@ -142,7 +117,7 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
       support: [],
     };
 
-    // Roll up per-hero stats into per-role bins, weighted by games_played.
+    // Roll up per-hero stats into per-role bins.
     const heroes = heroData.get(p.playerId);
     if (heroes) {
       for (const role of ROLES) {
@@ -150,8 +125,10 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
         let timePlayed = 0;
         let winNum = 0;
         let winDen = 0;
-        let kdaNum = 0;
-        let kdaDen = 0;
+        let eliminations = 0;
+        let assists = 0;
+        let deaths = 0;
+        let hasKdaData = false;
         for (const [h, stats] of heroes) {
           if (heroRole(h) !== role) continue;
           const gp = stats.gp ?? 0;
@@ -166,10 +143,10 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
           // game row this window and counters absent from the season profile
           // are reported zeros (Blizzard omits zero-valued stats).
           const heroKdaValue = kdaFrom(stats.e ?? 0, stats.a ?? 0, stats.d ?? 0);
-          if (heroKdaValue !== null && gp > 0) {
-            kdaNum += heroKdaValue * gp;
-            kdaDen += gp;
-          }
+          eliminations += stats.e ?? 0;
+          assists += stats.a ?? 0;
+          deaths += stats.d ?? 0;
+          hasKdaData = true;
           heroesByRole[role].push({
             hero: h,
             prettyName: prettyHeroName(h),
@@ -183,7 +160,9 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
         byRole[role].gamesPlayed = gamesPlayed;
         byRole[role].timePlayedSeconds = timePlayed;
         byRole[role].winRate = winDen > 0 ? winNum / winDen : null;
-        byRole[role].kda = kdaDen > 0 ? kdaNum / kdaDen : null;
+        // Aggregate the underlying counters before dividing; averaging hero
+        // ratios produces a biased role KDA.
+        byRole[role].kda = hasKdaData ? kdaFrom(eliminations, assists, deaths) : null;
 
         // Compute pickrate against the role's denominator and pick top N.
         const roleTime = timePlayed;

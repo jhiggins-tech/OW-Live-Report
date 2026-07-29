@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { STALE_DATA_EVENT, type StaleDataEventDetail } from '../lib/influxClient';
+import { STALE_DATA_EVENT, type StaleDataEventDetail } from '../lib/snapshotClient';
 
 interface StaleNotice {
   oldestAgeMs: number;
@@ -69,9 +69,9 @@ export default function StaleBanner() {
         fontSize: '0.9rem',
       }}
     >
-      <strong>Showing cached data.</strong>
+      <strong>Showing stale data.</strong>
       <span style={{ color: 'var(--muted)' }}>
-        Live InfluxDB queries failed; falling back to data {formatAge(notice.newestAgeMs)}
+        The data snapshots could not be refreshed; showing data {formatAge(notice.newestAgeMs)}
         {notice.count > 1 ? ` (oldest ${formatAge(notice.oldestAgeMs)})` : ''}.
       </span>
       <button

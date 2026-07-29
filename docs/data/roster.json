@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-12T11:03:02.334Z",
+  "generatedAt": "2026-07-14T12:39:00.360Z",
   "players": [
     {
       "battleTag": "Kieness#6123",
@@ -35,18 +35,6 @@
       "display": "Tones",
       "notes": "Captain",
       "slug": "tones"
-    },
-    {
-      "battleTag": "Vanillaxbean#1858",
-      "playerId": "Vanillaxbean-1858",
-      "display": "EDDDDD",
-      "slug": "eddddd"
-    },
-    {
-      "battleTag": "FattyBom#1347",
-      "playerId": "FattyBom-1347",
-      "display": "SimplyLilac",
-      "slug": "simplylilac"
     },
     {
       "battleTag": "Lank#21912",

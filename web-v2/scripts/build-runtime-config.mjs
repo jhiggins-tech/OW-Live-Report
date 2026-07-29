@@ -54,11 +54,6 @@ const config = compact({
   ui: {
     topHeroCount: pickInt('TOP_HERO_COUNT', 'VITE_TOP_HERO_COUNT'),
   },
-  influx: {
-    queryUrl: pickStr('INFLUX_QUERY_URL', 'VITE_INFLUX_QUERY_URL'),
-    database: pickStr('INFLUX_DATABASE', 'VITE_INFLUX_DATABASE'),
-    gamemode: pickStr('INFLUX_GAMEMODE', 'VITE_INFLUX_GAMEMODE'),
-  },
 });
 
 mkdirSync(dirname(outFile), { recursive: true });

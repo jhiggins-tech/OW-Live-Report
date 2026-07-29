@@ -18,19 +18,29 @@ export default function PlayerSupportingStats({ playerId }: { playerId: string }
   return (
     <section className="panel">
       <header className="section-head">
-        <h2>Supporting stats</h2>
-        <p>Career totals across all heroes, competitive</p>
+        <h2>Current performance</h2>
+        <p>Latest competitive all-heroes snapshot</p>
       </header>
       {query.isLoading ? (
-        <div className="grid cols-3">
-          {[0, 1, 2].map((i) => (<div className="panel skeleton" key={i} style={{ minHeight: 96 }} />))}
+        <div className="grid cols-4">
+          {[0, 1, 2, 3].map((i) => (<div className="panel skeleton" key={i} style={{ minHeight: 96 }} />))}
         </div>
       ) : query.isError ? (
-        <div className="error">Couldn't load supporting stats: {(query.error as Error)?.message ?? 'unknown error'}</div>
+        <div className="error">Couldn't load performance stats: {(query.error as Error)?.message ?? 'unknown error'}</div>
       ) : (
-        <div className="grid cols-3">
+        <div className="grid cols-4">
           <div className="stat-card">
-            <div className="label">Assists per death</div>
+            <div className="label">KDA</div>
+            <div className="value">{query.data?.kda == null ? '—' : query.data.kda.toFixed(2)}</div>
+            <div className="delta flat">(eliminations + assists) / deaths</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Win rate</div>
+            <div className="value">{query.data?.winRate == null ? '—' : `${query.data.winRate.toFixed(1)}%`}</div>
+            <div className="delta flat">{formatCompact(query.data?.gamesPlayed ?? null)} games</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">A / Death</div>
             <div className="value">{query.data?.assistsPerDeath == null ? '—' : query.data.assistsPerDeath.toFixed(2)}</div>
             <div className="delta flat">{formatCompact(query.data?.assists ?? null)} assists</div>
           </div>
@@ -38,11 +48,6 @@ export default function PlayerSupportingStats({ playerId }: { playerId: string }
             <div className="label">Heal / 10 min</div>
             <div className="value">{formatCompact(query.data?.healingPer10Min ?? null)}</div>
             <div className="delta flat">avg per 10 min</div>
-          </div>
-          <div className="stat-card">
-            <div className="label">Healing done</div>
-            <div className="value">{formatCompact(query.data?.healingDone ?? null)}</div>
-            <div className="delta flat">career total</div>
           </div>
         </div>
       )}

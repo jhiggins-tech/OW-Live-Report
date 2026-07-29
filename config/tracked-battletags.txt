@@ -14,13 +14,14 @@
 # Tank Main | PlayerOne#1234
 # Support Flex | PlayerTwo#5678 | Usually queues with the main stack
 
+# EDDDDD | Vanillaxbean#1858 
+# SimplyLilac | FattyBom#1347
+
 Kie | Kieness#6123 | Intel
 Darth_Kcaj | DarthKcaj#1443 | Coach
 Kiwi | KiwiCore#1324 | Number_One
 ShotDownBoyz | Shotdownboyz#1119 | Lieutenant
 Tones | Tones#11680 | Captain
-EDDDDD | Vanillaxbean#1858 
-SimplyLilac | FattyBom#1347
 LankCity | Lank#21912
 Melrose | Kiddo#11482
 

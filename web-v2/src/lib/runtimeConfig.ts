@@ -1,7 +1,11 @@
 // Runtime config: a small JSON document fetched once on app boot so we can
-// change non-secret operational values (team name, query URL, ...) without
-// rebuilding the SPA. The build step generates docs/data/runtime-config.json
-// from environment variables; see scripts/build-runtime-config.mjs.
+// change non-secret operational values (team name, ...) without rebuilding
+// the SPA. The build step generates docs/data/runtime-config.json from
+// environment variables; see scripts/build-runtime-config.mjs.
+//
+// Database connection details no longer live here: the app reads baked JSON
+// snapshots (see lib/snapshotClient.ts), and the SQL endpoint + gamemode are
+// build/CI-time concerns of scripts/fetch-snapshots.mjs.
 
 export interface RuntimeConfig {
   team: {
@@ -10,11 +14,6 @@ export interface RuntimeConfig {
   };
   ui: {
     topHeroCount: number;
-  };
-  influx: {
-    queryUrl: string;
-    database: string;
-    gamemode: string;
   };
 }
 
@@ -26,11 +25,6 @@ export const DEFAULT_CONFIG: RuntimeConfig = {
   ui: {
     topHeroCount: 6,
   },
-  influx: {
-    queryUrl: 'https://owstats.jhiggins.tech/query',
-    database: 'ow_stats_telegraf',
-    gamemode: 'competitive',
-  },
 };
 
 let cached: RuntimeConfig = DEFAULT_CONFIG;
@@ -40,7 +34,6 @@ function deepMerge(base: RuntimeConfig, override: Partial<RuntimeConfig>): Runti
   return {
     team: { ...base.team, ...(override.team ?? {}) },
     ui: { ...base.ui, ...(override.ui ?? {}) },
-    influx: { ...base.influx, ...(override.influx ?? {}) },
   };
 }
 

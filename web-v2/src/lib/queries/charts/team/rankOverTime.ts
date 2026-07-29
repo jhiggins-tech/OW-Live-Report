@@ -1,7 +1,7 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { loadRankDaily } from '../../../snapshotClient';
 import { rankOrdinal } from '../../../normalize/rankOrdinal';
-import { buildPlayerRegex } from '../../_shared';
-import { BUCKETS, TIME_WINDOWS } from '../_constants';
+import { playerIdSet } from '../../_shared';
+import { TIME_WINDOWS } from '../_constants';
 import type { Role, RosterPlayer } from '../../../../types/models';
 
 export interface TeamRankPoint {
@@ -16,11 +16,9 @@ const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 
 export async function fetchTeamRankOverTime(players: RosterPlayer[]): Promise<TeamRankPoint[]> {
   if (!players.length) return [];
-  const regex = buildPlayerRegex(players);
-  const window = TIME_WINDOWS.teamSeason;
-  const bucket = BUCKETS.teamRank;
-  const q = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player" =~ /${regex}/ AND time > now() - ${window} GROUP BY time(${bucket}), "player", "role" fill(none)`;
-  const body = await runInfluxQuery(q);
+  const ids = playerIdSet(players);
+  const cutoff = Date.now() - TIME_WINDOWS.teamSeason;
+  const { rows } = await loadRankDaily();
 
   interface BucketAcc {
     byRoleOrdinals: Record<Role, number[]>;
@@ -39,22 +37,18 @@ export async function fetchTeamRankOverTime(players: RosterPlayer[]): Promise<Te
     return p;
   };
 
-  for (const s of parseSeries<{ time: number; tier: string | null; division: number | string | null }>(body)) {
-    const role = (s.tags.role ?? '').toLowerCase();
+  for (const r of rows) {
+    if (!ids.has(r.player) || r.day < cutoff) continue;
+    const role = r.role.toLowerCase();
     const normalizedRole: Role | null = role === 'dps' ? 'damage' : (ROLES as readonly string[]).includes(role) ? (role as Role) : null;
     if (!normalizedRole) continue;
-    const playerTag = s.tags.player ?? '';
-    for (const row of s.rows) {
-      const t = Number(row.time);
-      if (!Number.isFinite(t)) continue;
-      const ord = rankOrdinal(row.tier as string | null, row.division as number | string | null);
-      if (ord === null) continue;
-      const acc = ensure(t);
-      acc.byRoleOrdinals[normalizedRole].push(ord);
-      const cur = acc.byPlayerOrdinals.get(playerTag) ?? [];
-      cur.push(ord);
-      acc.byPlayerOrdinals.set(playerTag, cur);
-    }
+    const ord = rankOrdinal(r.tier, r.division);
+    if (ord === null) continue;
+    const acc = ensure(r.day);
+    acc.byRoleOrdinals[normalizedRole].push(ord);
+    const cur = acc.byPlayerOrdinals.get(r.player) ?? [];
+    cur.push(ord);
+    acc.byPlayerOrdinals.set(r.player, cur);
   }
 
   const mean = (arr: number[]): number | null => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);

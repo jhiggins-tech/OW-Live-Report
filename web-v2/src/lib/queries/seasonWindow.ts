@@ -1,48 +1,52 @@
-import { parseSeries, runInfluxQuery } from '../influxClient';
+import { loadRankCurrent, loadRankDaily } from '../snapshotClient';
 import type { RosterPlayer } from '../../types/models';
-import { buildPlayerRegex } from './_shared';
+import { playerIdSet } from './_shared';
 
-type SeasonRow = Record<string, number | string | null> & {
-  time: number;
-  season: number | null;
-};
-
-function finiteNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
+// Mirrors the old InfluxQL pair (max("season"), then first("season") at that
+// season) against the rank snapshots: the newest season any of the given
+// players has reached, then the earliest sample carrying it. Day resolution —
+// the daily table is the only history that survives raw retention.
 export async function fetchCurrentCompetitiveSeasonStart(
   players: RosterPlayer[] | readonly string[],
 ): Promise<number | null> {
   if (!players.length) return null;
-  const regex = buildPlayerRegex(players);
-  const latestQ = `SELECT max("season") AS season FROM "competitive_rank" WHERE "player" =~ /${regex}/`;
-  const latestBody = await runInfluxQuery(latestQ);
-  const latestSeason = finiteNumber(parseSeries<SeasonRow>(latestBody)[0]?.rows[0]?.season);
+  const ids = playerIdSet(players);
+  const [current, daily] = await Promise.all([loadRankCurrent(), loadRankDaily()]);
+
+  let latestSeason: number | null = null;
+  for (const r of current.rows) {
+    if (!ids.has(r.player) || r.season === null) continue;
+    if (latestSeason === null || r.season > latestSeason) latestSeason = r.season;
+  }
   if (latestSeason === null) return null;
 
-  const startQ = `SELECT first("season") AS season FROM "competitive_rank" WHERE "player" =~ /${regex}/ AND "season"=${latestSeason}`;
-  const startBody = await runInfluxQuery(startQ);
   let start: number | null = null;
-  for (const series of parseSeries<SeasonRow>(startBody)) {
-    const time = finiteNumber(series.rows[0]?.time);
-    if (time === null) continue;
-    if (start === null || time < start) start = time;
+  for (const r of daily.rows) {
+    if (!ids.has(r.player) || r.season !== latestSeason) continue;
+    if (start === null || r.day < start) start = r.day;
+  }
+  if (start === null) {
+    // Season flipped so recently the daily aggregate has no row carrying it
+    // yet; fall back to the latest raw sample times.
+    for (const r of current.rows) {
+      if (!ids.has(r.player) || r.season !== latestSeason) continue;
+      if (start === null || r.time < start) start = r.time;
+    }
   }
   return start;
 }
 
-export async function currentSeasonTimePredicate(
+// Replaces the old currentSeasonTimePredicate: returns the epoch-ms cutoff
+// callers filter rows against (row.time >= cutoff).
+export async function currentSeasonCutoff(
   players: RosterPlayer[] | readonly string[],
-  fallbackWindow: string,
-): Promise<string> {
+  fallbackWindowMs: number,
+): Promise<number> {
   try {
     const start = await fetchCurrentCompetitiveSeasonStart(players);
-    if (start !== null) {
-      return `time >= '${new Date(start).toISOString()}'`;
-    }
+    if (start !== null) return start;
   } catch {
-    // Keep charts usable if rank/season lookup is temporarily unavailable.
+    // Keep charts usable if the rank snapshots are temporarily unavailable.
   }
-  return `time > now() - ${fallbackWindow}`;
+  return Date.now() - fallbackWindowMs;
 }

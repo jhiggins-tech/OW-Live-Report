@@ -15,7 +15,6 @@ import TeamRankChart from '../components/charts/TeamRankChart';
 import PlayerScatterChart from '../components/charts/PlayerScatterChart';
 import HeroPoolBar from '../components/charts/HeroPoolBar';
 import TeamHealingChart from '../components/charts/TeamHealingChart';
-import { fetchPlayerScatter } from '../lib/queries/charts/team/playerScatter';
 import { fetchSupportingStats } from '../lib/queries/supportingStats';
 import { hashPlayerSet } from '../lib/queries/_shared';
 
@@ -29,22 +28,9 @@ export default function OverviewPage() {
   );
 
   // Piggy-backs on the same three queries the team trend charts already fire,
-  // so no extra Influx work.
+  // so no extra data work.
   const { byPlayerId: trajectoryByPlayerId } = useTeamTrajectories(visible);
   const profiles = useTeamPlayerProfiles(visible);
-  const scatterStats = useQuery({
-    queryKey: ['team', 'playerScatter', hashPlayerSet(visible)],
-    queryFn: () => fetchPlayerScatter(visible),
-    enabled: visible.length > 0,
-  });
-  const scatterStatsByPlayerId = useMemo(() => {
-    const byPlayerId: Record<string, NonNullable<typeof scatterStats.data>[number]> = {};
-    for (const stat of scatterStats.data ?? []) {
-      byPlayerId[stat.player] = stat;
-    }
-    return byPlayerId;
-  }, [scatterStats.data]);
-
   // fetchSupportingStats returns a Map; convert to a plain object here so the
   // persisted query cache stays JSON-serialisable (a Map serialises to {}).
   const supporting = useQuery({
@@ -135,7 +121,6 @@ export default function OverviewPage() {
           players={visible}
           trajectoryByPlayerId={trajectoryByPlayerId}
           profileByPlayerId={profiles.byPlayerId}
-          statByPlayerId={scatterStatsByPlayerId}
           supportingByPlayerId={supportingByPlayerId}
         />
       </section>

@@ -1,7 +1,7 @@
 // Ports src/internal/AnalyticsCore.ps1:62 ConvertTo-RankOrdinal + ConvertFrom-RankOrdinal.
 // Ordinal range: 1 (Bronze 5) .. 40 (Champion 1).
 //
-// Important: the InfluxDB schema labels these counterintuitively:
+// Important: the stats schema labels these counterintuitively:
 //   - `tier` (float)  actually carries the division NUMBER (1..5)
 //   - `division` (string) actually carries the tier NAME (silver, gold, ...)
 // Inputs may also arrive in the natural order from other sources, so we

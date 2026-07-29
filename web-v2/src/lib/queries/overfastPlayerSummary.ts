@@ -1,5 +1,5 @@
 // OverFast /players/{playerId}/summary — public profile + per-role rank
-// snapshot. We use it for: avatar (already in InfluxDB, but free here),
+// snapshot. We use it for: avatar (already in the stats snapshots, but free here),
 // namecard, role_icon, rank_icon, and tier_icon for each role's
 // competitive standing. Schema confirmed against live data 2026-05-11.
 //

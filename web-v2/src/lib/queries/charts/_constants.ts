@@ -1,35 +1,30 @@
 import { getRuntimeConfig } from '../../runtimeConfig';
 
-// Bucket sizes + time windows per chart. Tune here, not in the chart file.
-// All durations are InfluxQL duration literals.
+// Time windows + bucket sizes per chart, in milliseconds. Tune here, not in
+// the chart file. Gamemode filtering happens in the snapshot pipeline
+// (scripts/fetch-snapshots.mjs), so it no longer appears here.
+
+export const DAY_MS = 24 * 60 * 60 * 1000;
+export const WEEK_MS = 7 * DAY_MS;
 
 export const TIME_WINDOWS = {
-  statCards: '14d',
-  scatter: '7d',
-  teamSeason: '90d',
-  playerSeason: '90d',
-  // Hero pool: 30d strikes a balance between current-meta relevance and
-  // query cost (90d ~2.15s vs 30d ~1.77s vs 14d ~0.6s in profiling).
-  heroLatest: '30d',
+  statCards: 14 * DAY_MS,
+  scatter: 7 * DAY_MS,
+  teamSeason: 90 * DAY_MS,
+  playerSeason: 90 * DAY_MS,
+  heroLatest: 30 * DAY_MS,
 } as const;
 
+// The daily snapshot table fixes most series at one sample per UTC day; the
+// only coarser roll-up left is the weekly bucketing used by the per-player
+// hero usage/perf charts.
 export const BUCKETS = {
-  teamKda: '1d',
-  teamWinRate: '1d',
-  teamRank: '1d',
-  playerRank: '1h',
-  playerKda: '1d',
-  playerWinRate: '1d',
-  heroUsage: '1w',
-  heroPerf: '1w',
+  heroUsage: WEEK_MS,
+  heroPerf: WEEK_MS,
 } as const;
 
 // Read from runtime config at call time so values can change between renders.
-// Getters (not const) because the config loads after module init.
-export function getGamemode(): string {
-  return getRuntimeConfig().influx.gamemode;
-}
-
+// Getter (not const) because the config loads after module init.
 export function getTopHeroCount(): number {
   return getRuntimeConfig().ui.topHeroCount;
 }

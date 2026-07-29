@@ -1,6 +1,7 @@
-import { parseSeries, runInfluxQuery } from '../influxClient';
+import { loadRankCurrent } from '../snapshotClient';
+import type { RankRow } from '../../types/snapshots';
 import type { RosterPlayer } from '../../types/models';
-import { buildPlayerRegex } from './_shared';
+import { playerIdSet } from './_shared';
 
 export interface CurrentSeasonByPlayer {
   bySlug: Record<string, number | null>;
@@ -9,18 +10,24 @@ export interface CurrentSeasonByPlayer {
 }
 
 export async function fetchCurrentSeasonByPlayer(players: RosterPlayer[]): Promise<CurrentSeasonByPlayer> {
-  const regex = buildPlayerRegex(players);
-  const q = `SELECT last("season") AS "season" FROM "competitive_rank" WHERE "player" =~ /${regex}/ GROUP BY "player"`;
-  const body = await runInfluxQuery(q);
-  const series = parseSeries<{ time: number; season: number | null }>(body);
+  const ids = playerIdSet(players);
+  const { rows } = await loadRankCurrent();
+
+  // Latest sample per player (any role) — the old last("season") GROUP BY
+  // "player" semantics.
+  const latestByPlayer = new Map<string, RankRow>();
+  for (const r of rows) {
+    if (!ids.has(r.player)) continue;
+    const prev = latestByPlayer.get(r.player);
+    if (!prev || r.time > prev.time) latestByPlayer.set(r.player, r);
+  }
 
   const bySlug: Record<string, number | null> = {};
   const byPlayerId: Record<string, number | null> = {};
   let maxSeason: number | null = null;
 
-  for (const s of series) {
-    const tag = s.tags.player ?? '';
-    const season = typeof s.rows[0]?.season === 'number' ? s.rows[0].season : null;
+  for (const [tag, row] of latestByPlayer) {
+    const season = row.season;
     byPlayerId[tag] = season;
     const player = players.find((p) => p.playerId === tag);
     if (player) bySlug[player.slug] = season;
