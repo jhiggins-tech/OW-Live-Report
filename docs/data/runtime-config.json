@@ -5,10 +5,5 @@
   },
   "ui": {
     "topHeroCount": 6
-  },
-  "influx": {
-    "queryUrl": "https://owstats.jhiggins.tech/query",
-    "database": "ow_stats_telegraf",
-    "gamemode": "competitive"
   }
 }
