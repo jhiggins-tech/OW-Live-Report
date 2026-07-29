@@ -1,6 +1,6 @@
 // Computes a TrajectoryResult per visible player by piggy-backing on the
 // three time-series queries the Overview Team-KDA / Team-WinRate / Team-Rank
-// charts already fire. Cost is zero net Influx work on a warm Overview load
+// charts already fire. Cost is zero net data work on a warm Overview load
 // since TanStack Query dedupes by queryKey.
 
 import { useMemo } from 'react';

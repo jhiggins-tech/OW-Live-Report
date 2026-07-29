@@ -1,8 +1,7 @@
-import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
-import { kdaFrom, safeNumber } from '../../../normalize/kda';
-import { buildPlayerRegex } from '../../_shared';
-import { BUCKETS, TIME_WINDOWS } from '../_constants';
-import { getGamemode } from '../_constants';
+import { loadCareerDaily } from '../../../snapshotClient';
+import { kdaFrom } from '../../../normalize/kda';
+import { playerIdSet } from '../../_shared';
+import { TIME_WINDOWS } from '../_constants';
 import type { RosterPlayer } from '../../../../types/models';
 
 export interface TeamKdaPoint {
@@ -13,45 +12,16 @@ export interface TeamKdaPoint {
 
 export async function fetchTeamKdaOverTime(players: RosterPlayer[]): Promise<TeamKdaPoint[]> {
   if (!players.length) return [];
-  const regex = buildPlayerRegex(players);
-  const window = TIME_WINDOWS.teamSeason;
-  const bucket = BUCKETS.teamKda;
+  const ids = playerIdSet(players);
+  const cutoff = Date.now() - TIME_WINDOWS.teamSeason;
+  const { rows } = await loadCareerDaily();
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY time(${bucket}), "player" fill(none)`;
-
-  const [combat, assists] = await runInfluxMultiQuery([combatQ, assistsQ]);
-
-  const buckets = new Map<number, Map<string, { e?: number; d?: number; a?: number }>>();
-  const getBucket = (time: number, player: string) => {
-    let m = buckets.get(time);
-    if (!m) { m = new Map(); buckets.set(time, m); }
-    let r = m.get(player);
-    if (!r) { r = {}; m.set(player, r); }
-    return r;
-  };
-
-  for (const s of parseStatementSeries<{ time: number; e: number | null; d: number | null }>(combat)) {
-    const tag = s.tags.player ?? '';
-    for (const row of s.rows) {
-      const t = Number(row.time);
-      if (!Number.isFinite(t)) continue;
-      const r = getBucket(t, tag);
-      const e = safeNumber(row.e);
-      const d = safeNumber(row.d);
-      if (e !== null) r.e = e;
-      if (d !== null) r.d = d;
-    }
-  }
-  for (const s of parseStatementSeries<{ time: number; a: number | null }>(assists)) {
-    const tag = s.tags.player ?? '';
-    for (const row of s.rows) {
-      const t = Number(row.time);
-      if (!Number.isFinite(t)) continue;
-      const r = getBucket(t, tag);
-      const a = safeNumber(row.a);
-      if (a !== null) r.a = a;
-    }
+  const buckets = new Map<number, Map<string, { e: number | null; d: number | null; a: number | null }>>();
+  for (const r of rows) {
+    if (!ids.has(r.player) || r.day < cutoff) continue;
+    let m = buckets.get(r.day);
+    if (!m) { m = new Map(); buckets.set(r.day, m); }
+    m.set(r.player, { e: r.eliminations, d: r.deaths, a: r.assists });
   }
 
   const times = [...buckets.keys()].sort((a, b) => a - b);

@@ -1,8 +1,7 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { loadCareerLatest } from '../../../snapshotClient';
 import { heroKey, prettyHeroName } from '../../../normalize/heroKey';
 import { safeNumber } from '../../../normalize/kda';
-import { buildPlayerRegex } from '../../_shared';
-import { getGamemode } from '../_constants';
+import { playerIdSet } from '../../_shared';
 import type { RosterPlayer } from '../../../../types/models';
 
 export interface HealingByHeroEntry {
@@ -18,22 +17,21 @@ export interface HealingByHeroEntry {
 // hero a roster player has logged time on. Sorted descending, top 15.
 export async function fetchTeamHealingByHero(players: RosterPlayer[]): Promise<HealingByHeroEntry[]> {
   if (!players.length) return [];
-  const regex = buildPlayerRegex(players);
+  const ids = playerIdSet(players);
   const displayById = new Map(players.map((p) => [p.playerId, p.display]));
-  const q = `SELECT last("healing_done_avg_per_10_min") AS h10 FROM "career_stats_average" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' GROUP BY "player", "hero"`;
-  const body = await runInfluxQuery(q);
+  const { rows } = await loadCareerLatest();
 
   const entries: HealingByHeroEntry[] = [];
-  for (const s of parseSeries<{ h10: number | null }>(body)) {
-    const hero = heroKey(s.tags.hero ?? '');
+  for (const r of rows) {
+    if (!ids.has(r.player)) continue;
+    const hero = heroKey(r.hero);
     if (!hero || hero === 'all-heroes' || hero === 'all') continue;
-    const h10 = safeNumber(s.rows[0]?.h10);
+    const h10 = safeNumber(r.healingPer10Min);
     if (h10 === null || h10 <= 0) continue;
-    const playerId = s.tags.player ?? '';
-    const player = displayById.get(playerId) ?? playerId;
+    const player = displayById.get(r.player) ?? r.player;
     const prettyName = prettyHeroName(hero);
     entries.push({
-      key: `${playerId}|${hero}`,
+      key: `${r.player}|${hero}`,
       label: `${player} | ${prettyName}`,
       player,
       hero,

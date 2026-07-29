@@ -1,6 +1,6 @@
-import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
+import { loadProfiles } from '../../../snapshotClient';
 import { safeNumber } from '../../../normalize/kda';
-import { buildPlayerRegex } from '../../_shared';
+import { playerIdSet } from '../../_shared';
 import { fetchSupportingStats } from '../../supportingStats';
 import type { RosterPlayer } from '../../../../types/models';
 
@@ -28,24 +28,22 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
       newestSeenAt: null,
     };
   }
-  const regex = buildPlayerRegex(players);
+  const ids = playerIdSet(players);
 
-  // last(username) is the cheapest way to recover the per-player row time
-  // from player_summary (there is no last_updated_at field on the schema).
-  const summaryQ = `SELECT last("username") AS u FROM "player_summary" WHERE "player" =~ /${regex}/ GROUP BY "player"`;
-
-  const [[summary], supporting] = await Promise.all([
-    runInfluxMultiQuery([summaryQ]),
+  // The player_summary snapshot's row time is the per-player "last seen by
+  // the scraper" timestamp (there is no last_updated_at field on the schema).
+  const [profiles, supporting] = await Promise.all([
+    loadProfiles(),
     fetchSupportingStats(players.map((p) => p.playerId)),
   ]);
 
   const newestByPlayer = new Map<string, number>();
   let newestSeenAt: number | null = null;
-  for (const s of parseStatementSeries<{ time: number; u: string | null }>(summary)) {
-    const tag = s.tags.player ?? '';
-    const seenAt = safeNumber(s.rows[0]?.time);
+  for (const r of profiles.rows) {
+    if (!ids.has(r.player)) continue;
+    const seenAt = safeNumber(r.time);
     if (seenAt !== null) {
-      newestByPlayer.set(tag, seenAt);
+      newestByPlayer.set(r.player, seenAt);
       if (newestSeenAt === null || seenAt > newestSeenAt) newestSeenAt = seenAt;
     }
   }

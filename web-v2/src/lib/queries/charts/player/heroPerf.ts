@@ -1,10 +1,8 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { loadCareerHeroDaily } from '../../../snapshotClient';
 import { heroKey } from '../../../normalize/heroKey';
-import { kdaFrom, safeNumber } from '../../../normalize/kda';
-import { quoteValue } from '../../_shared';
-import { currentSeasonTimePredicate } from '../../seasonWindow';
+import { kdaFrom } from '../../../normalize/kda';
+import { currentSeasonCutoff } from '../../seasonWindow';
 import { BUCKETS, TIME_WINDOWS } from '../_constants';
-import { getGamemode } from '../_constants';
 
 export interface PlayerHeroPerfPoint {
   time: number;
@@ -12,39 +10,32 @@ export interface PlayerHeroPerfPoint {
 }
 
 export async function fetchPlayerHeroPerf(playerId: string): Promise<PlayerHeroPerfPoint[]> {
-  const window = TIME_WINDOWS.playerSeason;
   const bucket = BUCKETS.heroPerf;
-  const player = quoteValue(playerId);
-  const timeFilter = await currentSeasonTimePredicate([playerId], window);
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
+  const { rows } = await loadCareerHeroDaily();
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY time(${bucket}), "hero" fill(none)`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY time(${bucket}), "hero" fill(none)`;
-  const [c, a] = await Promise.all([runInfluxQuery(combatQ), runInfluxQuery(assistsQ)]);
-
+  // Weekly buckets, last day in the bucket wins. A combat sample (elims or
+  // deaths present) is what puts a hero on the chart for a bucket, matching
+  // the old shape where the combat query drove the output.
   const combat = new Map<string, Map<number, { e: number | null; d: number | null }>>();
-  for (const s of parseSeries<{ time: number; e: number | null; d: number | null }>(c)) {
-    const key = heroKey(s.tags.hero ?? '');
-    if (!key) continue;
-    const byTime = combat.get(key) ?? new Map();
-    for (const row of s.rows) {
-      const t = Number(row.time);
-      if (!Number.isFinite(t)) continue;
-      byTime.set(t, { e: safeNumber(row.e), d: safeNumber(row.d) });
-    }
-    combat.set(key, byTime);
-  }
-
   const assistsByHero = new Map<string, Map<number, number | null>>();
-  for (const s of parseSeries<{ time: number; a: number | null }>(a)) {
-    const key = heroKey(s.tags.hero ?? '');
+  const sorted = rows
+    .filter((r) => r.player === playerId && r.day >= cutoff)
+    .sort((a, b) => a.day - b.day);
+  for (const r of sorted) {
+    const key = heroKey(r.hero);
     if (!key) continue;
-    const byTime = assistsByHero.get(key) ?? new Map();
-    for (const row of s.rows) {
-      const t = Number(row.time);
-      if (!Number.isFinite(t)) continue;
-      byTime.set(t, safeNumber(row.a));
+    const t = r.day - (r.day % bucket);
+    if (r.eliminations !== null || r.deaths !== null) {
+      const byTime = combat.get(key) ?? new Map<number, { e: number | null; d: number | null }>();
+      byTime.set(t, { e: r.eliminations, d: r.deaths });
+      combat.set(key, byTime);
     }
-    assistsByHero.set(key, byTime);
+    if (r.assists !== null) {
+      const byTime = assistsByHero.get(key) ?? new Map<number, number | null>();
+      byTime.set(t, r.assists);
+      assistsByHero.set(key, byTime);
+    }
   }
 
   const allTimes = new Set<number>();

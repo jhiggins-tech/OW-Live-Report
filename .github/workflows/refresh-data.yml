@@ -1,30 +1,32 @@
-name: Deploy site
+name: Refresh data snapshots
+
+# Bakes fresh JSON snapshots from the TimescaleDB stats backend into
+# docs/data/snapshots/ (served as-is by GitHub Pages — no site rebuild
+# needed, the SPA fetches these files at view time). The scraper upstream
+# samples hourly, so an hourly cron matches the source cadence.
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    - cron: '20 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Serialize with deploy.yml: both commit-back to main.
 concurrency:
   group: deploy
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  refresh:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: web-v2
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Install pnpm
@@ -40,53 +42,29 @@ jobs:
           cache-dependency-path: web-v2/pnpm-lock.yaml
 
       - name: Install dependencies
+        working-directory: web-v2
         run: pnpm install --frozen-lockfile
 
-      - name: Build roster manifest
-        run: pnpm run build:roster
-
-      # Ship whatever snapshots the last deploy served, then try to refresh
-      # them. If the stats backend is briefly unreachable the deploy still
-      # goes out with the previous (at worst one-deploy-old) data, and the
-      # hourly refresh-data workflow catches the site up.
-      - name: Seed data snapshots from previous deploy
-        run: |
-          if [ -d ../docs/data/snapshots ]; then
-            mkdir -p public/data
-            cp -r ../docs/data/snapshots public/data/snapshots
-          fi
-
-      - name: Refresh data snapshots
-        continue-on-error: true
+      - name: Fetch snapshots
+        working-directory: web-v2
         env:
           # Read-only, intentionally public credentials; override via repo
           # Settings → Variables → Actions if the backend moves.
           STATS_DB_URL: ${{ vars.STATS_DB_URL || 'postgresql://readonly:owstats-readonly@owstats.jhiggins.tech:5432/ow_stats?sslmode=require' }}
           STATS_GAMEMODE: ${{ vars.STATS_GAMEMODE || 'competitive' }}
-        run: node scripts/fetch-snapshots.mjs
+        run: node scripts/fetch-snapshots.mjs --out ../docs/data/snapshots
 
-      - name: Build site
-        env:
-          # Read from repository variables when set, fall back to current
-          # production values otherwise. Override via repo Settings →
-          # Variables → Actions. See web-v2/.env.example for full contract.
-          TEAM_NAME: ${{ vars.TEAM_NAME || 'Weasels' }}
-          TEAM_SUBTITLE: ${{ vars.TEAM_SUBTITLE || 'Live competitive reporting with team and player drill-downs.' }}
-          TOP_HERO_COUNT: ${{ vars.TOP_HERO_COUNT || '6' }}
-        run: pnpm run build
-
-      - name: Commit refreshed docs/ back to main
-        working-directory: ${{ github.workspace }}
+      - name: Commit refreshed snapshots back to main
         run: |
           set -euo pipefail
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs
+          git add docs/data/snapshots
           if git diff --cached --quiet; then
-            echo 'No docs/ changes to commit.'
+            echo 'No snapshot changes to commit.'
             exit 0
           fi
-          git commit -m 'ci: refresh docs/ [skip ci]'
+          git commit -m 'ci: refresh data snapshots [skip ci]'
 
           # Retry push to ride out any concurrent push to main.
           for attempt in 1 2 3 4 5; do

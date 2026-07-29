@@ -10,6 +10,13 @@ in scope, what's out, and the open questions.
   scope, the V2.1 checklist (all shipped, with PR references), the V2.2
   backlog (pointing at the PRDs below), and the V1→V2 port map.
 
+## V2.3
+
+- **[v2.3-influxql-to-sql-migration.md](./v2.3-influxql-to-sql-migration.md)**
+  — *Shipped.* The stats backend replaced its public InfluxQL HTTP endpoint
+  with read-only SQL over the Postgres wire protocol; V2 moved from
+  browser-direct InfluxDB queries to CI-baked JSON snapshot datasets.
+
 ## V2.2 PRDs
 
 All sized to roughly one PR each. Status is currently "Proposed" except

@@ -1,65 +1,41 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { loadCareerLatest } from '../../../snapshotClient';
 import { heroKey, prettyHeroName } from '../../../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
-import { quoteValue } from '../../_shared';
-import { currentSeasonTimePredicate } from '../../seasonWindow';
+import { currentSeasonCutoff } from '../../seasonWindow';
 import { ONE_GAME_OUTLIER_WIN_RATE, TIME_WINDOWS } from '../_constants';
-import { getGamemode } from '../_constants';
 import type { HeroLeaderboardRow } from '../../../../types/models';
+import type { CareerLatestRow } from '../../../../types/snapshots';
 
 export async function fetchPlayerHeroLeaderboard(playerId: string): Promise<HeroLeaderboardRow[]> {
-  const window = TIME_WINDOWS.playerSeason;
-  const player = quoteValue(playerId);
-  const timeFilter = await currentSeasonTimePredicate([playerId], window);
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
+  const { rows: snapshot } = await loadCareerLatest();
 
-  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "hero"`;
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "hero"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "hero"`;
-
-  const [g, c, a] = await Promise.all([runInfluxQuery(gameQ), runInfluxQuery(combatQ), runInfluxQuery(assistsQ)]);
-
-  const gByHero = new Map<string, { gp: number | null; wp: number | null; tp: number | null }>();
-  for (const s of parseSeries<{ gp: number | null; wp: number | null; tp: number | null }>(g)) {
-    const key = heroKey(s.tags.hero ?? '');
+  const byHero = new Map<string, CareerLatestRow>();
+  for (const r of snapshot) {
+    if (r.player !== playerId || r.time < cutoff) continue;
+    const key = heroKey(r.hero);
     if (!key) continue;
-    gByHero.set(key, {
-      gp: safeNumber(s.rows[0]?.gp),
-      wp: safeNumber(s.rows[0]?.wp),
-      tp: safeNumber(s.rows[0]?.tp),
-    });
-  }
-  const cByHero = new Map<string, { e: number | null; d: number | null }>();
-  for (const s of parseSeries<{ e: number | null; d: number | null }>(c)) {
-    const key = heroKey(s.tags.hero ?? '');
-    if (!key) continue;
-    cByHero.set(key, { e: safeNumber(s.rows[0]?.e), d: safeNumber(s.rows[0]?.d) });
-  }
-  const aByHero = new Map<string, number | null>();
-  for (const s of parseSeries<{ a: number | null }>(a)) {
-    const key = heroKey(s.tags.hero ?? '');
-    if (!key) continue;
-    aByHero.set(key, safeNumber(s.rows[0]?.a));
+    byHero.set(key, r);
   }
 
   const rows: HeroLeaderboardRow[] = [];
-  for (const [hero, gameStats] of gByHero) {
+  for (const [hero, r] of byHero) {
     if (hero === 'all-heroes' || hero === 'all') continue;
-    const combat = cByHero.get(hero);
-    const assists = aByHero.get(hero) ?? null;
-    const gp = gameStats.gp ?? 0;
+    const gp = safeNumber(r.gamesPlayed) ?? 0;
     if (gp < 1) continue;
+    const wp = safeNumber(r.winPercentage);
     // Filter 100%-WR one-game outliers per V1 behavior.
-    if (gp <= 1 && gameStats.wp === ONE_GAME_OUTLIER_WIN_RATE) continue;
+    if (gp <= 1 && wp === ONE_GAME_OUTLIER_WIN_RATE) continue;
     rows.push({
       hero,
       prettyName: prettyHeroName(hero),
       gamesPlayed: gp,
-      winRate: gameStats.wp,
+      winRate: wp,
       // The hero has a game row this window, so counters absent from the
       // season profile are reported zeros (Blizzard omits zero-valued stats),
       // not missing data.
-      kda: kdaFrom(combat?.e ?? 0, assists ?? 0, combat?.d ?? 0),
-      timePlayedSeconds: gameStats.tp ?? 0,
+      kda: kdaFrom(r.eliminations ?? 0, r.assists ?? 0, r.deaths ?? 0),
+      timePlayedSeconds: safeNumber(r.timePlayed) ?? 0,
     });
   }
   rows.sort((a, b) => (b.timePlayedSeconds ?? 0) - (a.timePlayedSeconds ?? 0));

@@ -6,7 +6,7 @@
 // freshly-built docs/index.html with a route-specific <title> and
 // OpenGraph tags, so link previews (Slack, Discord, etc.) differ per URL.
 // Player stubs additionally get the player's Battle.net avatar URL as
-// og:image, fetched once from InfluxDB at build time. Every stub loads
+// og:image, read from the baked profiles snapshot. Every stub loads
 // the same content-hashed JS bundle Vite emitted, so the SPA boots
 // normally and the router takes over client-side.
 //
@@ -21,7 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(here, '..', '..', 'docs');
 const shellPath = resolve(docsDir, 'index.html');
 const rosterPath = resolve(docsDir, 'data', 'roster.json');
-const runtimeConfigPath = resolve(docsDir, 'data', 'runtime-config.json');
+const profilesPath = resolve(docsDir, 'data', 'snapshots', 'profiles.json');
 
 const RESERVED_ROUTES = [
   { dir: 'settings', title: 'Settings — OW Live Report', description: 'Configure data sources and display preferences.' },
@@ -76,53 +76,23 @@ function writeStub(routeDir, html) {
   writeFileSync(target, html);
 }
 
-// Fetch one row per player_id from InfluxDB, returning a Map<playerId, avatarUrl>.
+// Read one avatar per player from the baked profiles snapshot (written by
+// fetch-snapshots.mjs into public/, copied to docs/ by the Vite build).
 // Resolves to an empty Map on any failure — preview-image is a polish layer,
 // not worth failing the whole deploy over.
 async function fetchAvatars(players) {
-  let queryUrl;
-  let database;
+  if (players.length === 0) return new Map();
   try {
-    const cfg = JSON.parse(readFileSync(runtimeConfigPath, 'utf8'));
-    queryUrl = cfg?.influx?.queryUrl;
-    database = cfg?.influx?.database;
-  } catch {
-    // runtime-config missing or unreadable; skip avatars.
-  }
-  if (!queryUrl || !database || players.length === 0) {
-    return new Map();
-  }
-  // Quote player_id values for safe InfluxQL string literals. Player IDs
-  // are derived from BattleTags (alnum + '-'), so escaping single-quotes is
-  // belt-and-braces.
-  const statements = players.map(
-    (p) =>
-      `SELECT last("avatar") AS avatar FROM "player_summary" WHERE "player"='${String(p.playerId).replace(/'/g, "\\'")}' GROUP BY "player"`,
-  );
-  const params = new URLSearchParams({ db: database, q: statements.join('; '), epoch: 'ms' });
-  const url = `${queryUrl}?${params.toString()}`;
-  try {
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) {
-      console.warn(`build-stubs: avatar fetch failed (HTTP ${res.status}); skipping og:image.`);
-      return new Map();
-    }
-    const body = await res.json();
+    const { rows = [] } = JSON.parse(readFileSync(profilesPath, 'utf8'));
     const out = new Map();
-    for (const result of body?.results ?? []) {
-      for (const series of result?.series ?? []) {
-        const playerId = series?.tags?.player;
-        const cols = series?.columns ?? [];
-        const avatarIdx = cols.indexOf('avatar');
-        const value = series?.values?.[0]?.[avatarIdx];
-        if (playerId && typeof value === 'string' && value) {
-          out.set(playerId, value);
-        }
+    for (const row of rows) {
+      if (row?.player && typeof row.avatar === 'string' && row.avatar) {
+        out.set(row.player, row.avatar);
       }
     }
     return out;
   } catch (err) {
-    console.warn(`build-stubs: avatar fetch errored (${err.message}); skipping og:image.`);
+    console.warn(`build-stubs: could not read profiles snapshot (${err.message}); skipping og:image.`);
     return new Map();
   }
 }

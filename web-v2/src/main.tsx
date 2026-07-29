@@ -12,6 +12,7 @@ import SettingsPage from './pages/SettingsPage';
 import OptimizerPage from './pages/OptimizerPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { loadRuntimeConfig } from './lib/runtimeConfig';
+import { loadMeta } from './lib/snapshotClient';
 
 import './theme/tokens.css';
 import './theme/global.css';
@@ -65,6 +66,11 @@ const router = createBrowserRouter(
 // Wait for runtime-config.json before mounting so any module that calls
 // getRuntimeConfig() at render time sees the loaded values, not defaults.
 await loadRuntimeConfig();
+
+// Fire-and-forget: loading the snapshot meta here lets the client flag a
+// stuck refresh pipeline (StaleBanner) even on pages that only hit a few
+// datasets. Failure is non-fatal — individual queries surface their own.
+void loadMeta().catch(() => {});
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

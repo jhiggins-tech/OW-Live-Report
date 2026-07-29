@@ -1,7 +1,7 @@
-import { parseSeries, runInfluxQuery } from '../influxClient';
+import { loadRankCurrent } from '../snapshotClient';
 import { rankOrdinal } from '../normalize/rankOrdinal';
 import { assessWideGroup, type WideGroupAssessment } from '../wideMatch';
-import { buildPlayerRegex } from './_shared';
+import { playerIdSet } from './_shared';
 import type { Role, RosterPlayer } from '../../types/models';
 
 export interface PlayerBestRole {
@@ -29,22 +29,19 @@ export async function fetchTeamWideMatch(players: RosterPlayer[]): Promise<TeamW
   if (!players.length) {
     return { assessment: assessWideGroup([]), perPlayer: [] };
   }
-  const regex = buildPlayerRegex(players);
-  const q = `SELECT last("tier") AS tier, last("division") AS division FROM "competitive_rank" WHERE "player" =~ /${regex}/ GROUP BY "player", "role"`;
-  const body = await runInfluxQuery(q);
+  const ids = playerIdSet(players);
+  const { rows } = await loadRankCurrent();
 
   const byPlayer = new Map<string, Partial<Record<Role, number>>>();
-  for (const s of parseSeries<{ time: number; tier: number | string | null; division: number | string | null }>(body)) {
-    const tag = s.tags.player ?? '';
-    const role = normalizeRole(s.tags.role);
+  for (const r of rows) {
+    if (!ids.has(r.player)) continue;
+    const role = normalizeRole(r.role);
     if (!role) continue;
-    const row = s.rows[0];
-    if (!row) continue;
-    const ord = rankOrdinal(row.tier as string | number | null, row.division as string | number | null);
+    const ord = rankOrdinal(r.tier, r.division);
     if (ord === null) continue;
-    const map = byPlayer.get(tag) ?? {};
+    const map = byPlayer.get(r.player) ?? {};
     map[role] = ord;
-    byPlayer.set(tag, map);
+    byPlayer.set(r.player, map);
   }
 
   const perPlayer: PlayerBestRole[] = players.map((p) => {

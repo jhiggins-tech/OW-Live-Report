@@ -1,54 +1,38 @@
-import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
-import { kdaFrom, safeNumber } from '../../../normalize/kda';
-import { buildPlayerRegex } from '../../_shared';
+import { loadCareerLatest } from '../../../snapshotClient';
+import { kdaFrom } from '../../../normalize/kda';
+import { playerIdSet } from '../../_shared';
 import { TIME_WINDOWS } from '../_constants';
-import { getGamemode } from '../_constants';
 import type { PlayerStatPoint, RosterPlayer } from '../../../../types/models';
+import type { CareerLatestRow } from '../../../../types/snapshots';
 
 export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<PlayerStatPoint[]> {
   if (!players.length) return [];
-  const regex = buildPlayerRegex(players);
-  const window = TIME_WINDOWS.scatter;
+  const ids = playerIdSet(players);
+  const cutoff = Date.now() - TIME_WINDOWS.scatter;
+  const { rows } = await loadCareerLatest();
 
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY "player"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY "player"`;
-  // See statCards.ts for why we derive WR from games_won/games_played at
-  // hero='all-heroes' rather than reading win_percentage.
-  const gameQ = `SELECT last("games_won") AS gw, last("games_played") AS gp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY "player"`;
-
-  const [combat, assists, game] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ]);
-
-  const cByP = new Map<string, { e: number | null; d: number | null }>();
-  for (const s of parseStatementSeries<{ e: number | null; d: number | null }>(combat)) {
-    cByP.set(s.tags.player ?? '', { e: safeNumber(s.rows[0]?.e), d: safeNumber(s.rows[0]?.d) });
-  }
-  const aByP = new Map<string, number | null>();
-  for (const s of parseStatementSeries<{ a: number | null }>(assists)) {
-    aByP.set(s.tags.player ?? '', safeNumber(s.rows[0]?.a));
-  }
-  const gByP = new Map<string, { wp: number | null; gp: number | null; t: number | null }>();
-  for (const s of parseStatementSeries<{ time: number; gw: number | null; gp: number | null }>(game)) {
-    const gw = safeNumber(s.rows[0]?.gw);
-    const gp = safeNumber(s.rows[0]?.gp);
-    gByP.set(s.tags.player ?? '', {
-      wp: gw !== null && gp !== null && gp > 0 ? (gw / gp) * 100 : null,
-      gp,
-      t: safeNumber(s.rows[0]?.time),
-    });
+  // Latest all-heroes aggregate per player, provided it's fresh enough for
+  // the scatter's window — matching the old `time > now() - 7d` predicate.
+  const byPlayer = new Map<string, CareerLatestRow>();
+  for (const r of rows) {
+    if (r.hero !== 'all-heroes' || !ids.has(r.player) || r.time < cutoff) continue;
+    byPlayer.set(r.player, r);
   }
 
   return players.map((p) => {
-    const comb = cByP.get(p.playerId);
-    const assistsVal = aByP.get(p.playerId) ?? null;
-    const gameVal = gByP.get(p.playerId);
+    const r = byPlayer.get(p.playerId);
+    const gw = r?.gamesWon ?? null;
+    const gp = r?.gamesPlayed ?? null;
     return {
       player: p.playerId,
       display: p.display,
       slug: p.slug,
-      kda: kdaFrom(comb?.e, assistsVal, comb?.d),
-      winRate: gameVal?.wp ?? null,
-      gamesPlayed: gameVal?.gp ?? null,
-      lastSeen: gameVal?.t ?? null,
+      kda: kdaFrom(r?.eliminations, r?.assists, r?.deaths),
+      // See statCards.ts for why WR derives from games_won/games_played at
+      // hero='all-heroes' rather than reading win_percentage.
+      winRate: gw !== null && gp !== null && gp > 0 ? (gw / gp) * 100 : null,
+      gamesPlayed: gp,
+      lastSeen: r?.time ?? null,
       rankOrdinal: null,
     };
   });

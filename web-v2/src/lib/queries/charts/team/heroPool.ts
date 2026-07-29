@@ -1,26 +1,23 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { loadCareerLatest } from '../../../snapshotClient';
 import { heroKey, prettyHeroName } from '../../../normalize/heroKey';
 import { safeNumber } from '../../../normalize/kda';
-import { buildPlayerRegex } from '../../_shared';
-import { currentSeasonTimePredicate } from '../../seasonWindow';
-import { TIME_WINDOWS } from '../_constants';
-import { getGamemode, getTopHeroCount } from '../_constants';
+import { playerIdSet } from '../../_shared';
+import { currentSeasonCutoff } from '../../seasonWindow';
+import { TIME_WINDOWS, getTopHeroCount } from '../_constants';
 import type { HeroPoolEntry, RosterPlayer } from '../../../../types/models';
 
 export async function fetchTeamHeroPool(players: RosterPlayer[]): Promise<HeroPoolEntry[]> {
   if (!players.length) return [];
-  const regex = buildPlayerRegex(players);
-  const window = TIME_WINDOWS.heroLatest;
-  const timeFilter = await currentSeasonTimePredicate(players, window);
-  const q = `SELECT last("time_played") AS tp FROM "career_stats_game" WHERE "player" =~ /${regex}/ AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "player", "hero"`;
-  const body = await runInfluxQuery(q);
+  const ids = playerIdSet(players);
+  const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.heroLatest);
+  const { rows } = await loadCareerLatest();
 
   const totals = new Map<string, number>();
-  for (const s of parseSeries<{ tp: number | null }>(body)) {
-    const heroTag = s.tags.hero ?? '';
-    const key = heroKey(heroTag);
+  for (const r of rows) {
+    if (!ids.has(r.player) || r.time < cutoff) continue;
+    const key = heroKey(r.hero);
     if (!key || key === 'all-heroes' || key === 'all') continue;
-    const tp = safeNumber(s.rows[0]?.tp) ?? 0;
+    const tp = safeNumber(r.timePlayed) ?? 0;
     if (tp <= 0) continue;
     totals.set(key, (totals.get(key) ?? 0) + tp);
   }

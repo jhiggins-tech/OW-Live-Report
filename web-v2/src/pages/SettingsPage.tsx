@@ -69,7 +69,7 @@ export default function SettingsPage() {
       <section className="panel">
         <header className="section-head">
           <h2>About</h2>
-          <p>V2 reads live from InfluxDB. All preferences are stored in your browser.</p>
+          <p>V2 reads hourly-refreshed data snapshots. All preferences are stored in your browser.</p>
         </header>
         <p className="lede" style={{ marginTop: 0 }}>
           Hidden players are excluded from the team overview's stat cards, KDA / win-rate / rank

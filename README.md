@@ -1,8 +1,12 @@
 # OW Live Report
 
 Static React + TypeScript site that renders live competitive Overwatch
-analytics for a tracked roster. The browser queries InfluxDB directly at
-view time; there is no prebuild data pipeline.
+analytics for a tracked roster. An hourly CI pipeline queries the
+TimescaleDB stats backend over SQL and bakes JSON snapshot datasets into
+`docs/data/snapshots/`; the browser fetches those static files at view
+time. (The backend's old InfluxQL HTTP endpoint is gone, and browsers
+can't speak the Postgres wire protocol, so there is no browser-direct
+database access anymore.)
 
 Hosted via GitHub Pages from `main /docs`.
 
@@ -39,15 +43,23 @@ Keys:
 
 - `TEAM_NAME`, `TEAM_SUBTITLE`
 - `TOP_HERO_COUNT`
-- `INFLUX_QUERY_URL`, `INFLUX_DATABASE`, `INFLUX_GAMEMODE`
+
+The stats-backend connection (`STATS_DB_URL`, `STATS_GAMEMODE`) is a
+CI/build-time concern of `scripts/fetch-snapshots.mjs`, not part of the
+runtime config the SPA fetches.
 
 ## Local dev
 
 ```bash
 cd web-v2
 pnpm install
-pnpm dev          # http://localhost:5173/
+pnpm fetch:snapshots   # bake data snapshots from the stats backend
+pnpm dev               # http://localhost:5173/
 ```
+
+`fetch:snapshots` needs outbound access to
+`owstats.jhiggins.tech:5432`; without it the site renders empty with a
+stale-data banner.
 
 Production preview:
 
@@ -67,8 +79,15 @@ pnpm typecheck
 `.github/workflows/deploy.yml` runs on every push to `main`:
 
 1. Build the roster manifest from `config/tracked-battletags.txt`.
-2. Build the SPA into `docs/`.
-3. Commit-back `docs/` to `main` with `[skip ci]`.
+2. Refresh the data snapshots (seeded from the previous deploy if the
+   stats backend is unreachable).
+3. Build the SPA into `docs/`.
+4. Commit-back `docs/` to `main` with `[skip ci]`.
+
+`.github/workflows/refresh-data.yml` additionally re-bakes
+`docs/data/snapshots/` hourly (matching the scraper's cadence) and
+commits with `[skip ci]` — no site rebuild needed, the SPA fetches the
+JSON at view time.
 
 GitHub Pages serves the resulting `docs/` tree. No manual steps.
 

@@ -1,8 +1,6 @@
-import { parseSeries, runInfluxQuery } from '../../../influxClient';
+import { loadCareerDaily } from '../../../snapshotClient';
 import { safeNumber } from '../../../normalize/kda';
-import { quoteValue } from '../../_shared';
-import { BUCKETS, TIME_WINDOWS } from '../_constants';
-import { getGamemode } from '../_constants';
+import { TIME_WINDOWS } from '../_constants';
 
 export interface PlayerWinRatePoint {
   time: number;
@@ -10,22 +8,19 @@ export interface PlayerWinRatePoint {
 }
 
 export async function fetchPlayerWinRateTrend(playerId: string): Promise<PlayerWinRatePoint[]> {
-  const window = TIME_WINDOWS.playerSeason;
-  const bucket = BUCKETS.playerWinRate;
+  const cutoff = Date.now() - TIME_WINDOWS.playerSeason;
   // See team/statCards.ts for why we read games_won/games_played at
   // hero='all-heroes' instead of win_percentage.
-  const q = `SELECT last("games_won") AS gw, last("games_played") AS gp FROM "career_stats_game" WHERE "player"='${quoteValue(playerId)}' AND "gamemode"='${getGamemode()}' AND "hero"='all-heroes' AND time > now() - ${window} GROUP BY time(${bucket}) fill(none)`;
-  const body = await runInfluxQuery(q);
-  const rows = parseSeries<{ time: number; gw: number | null; gp: number | null }>(body)[0]?.rows ?? [];
+  const { rows } = await loadCareerDaily();
   return rows
+    .filter((r) => r.player === playerId && r.day >= cutoff)
     .map((r) => {
-      const gw = safeNumber(r.gw);
-      const gp = safeNumber(r.gp);
+      const gw = safeNumber(r.gamesWon);
+      const gp = safeNumber(r.gamesPlayed);
       return {
-        time: Number(r.time),
+        time: r.day,
         winRate: gw !== null && gp !== null && gp > 0 ? (gw / gp) * 100 : null,
       };
     })
-    .filter((p) => Number.isFinite(p.time))
     .sort((a, b) => a.time - b.time);
 }

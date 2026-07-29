@@ -2,7 +2,7 @@
 // src/internal/AnalyticsCore.ps1:772 Get-TimeSeriesTrend.
 //
 // Pure functions over an array of {time (ms epoch), value (number | null)}.
-// Time is the InfluxDB-canonical ms epoch we already pull from chart queries,
+// Time is the ms epoch we already pull from chart queries,
 // so chart series can feed in here directly with minimal massage.
 
 export interface SeriesPoint {

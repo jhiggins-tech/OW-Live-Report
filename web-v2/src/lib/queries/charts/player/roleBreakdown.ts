@@ -1,11 +1,9 @@
-import { parseStatementSeries, runInfluxMultiQuery } from '../../../influxClient';
+import { loadCareerLatest } from '../../../snapshotClient';
 import { heroRole } from '../../../heroCatalog';
 import { heroKey } from '../../../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../../../normalize/kda';
-import { quoteValue } from '../../_shared';
-import { currentSeasonTimePredicate } from '../../seasonWindow';
+import { currentSeasonCutoff } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
-import { getGamemode } from '../_constants';
 import type { Role, RoleBreakdownEntry } from '../../../../types/models';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
@@ -13,15 +11,8 @@ const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 // career_stats_* doesn't tag rows with role, so role is derived from hero via
 // HERO_CATALOG. Heroes not in the catalog are skipped to avoid mislabeling.
 export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBreakdownEntry[]> {
-  const window = TIME_WINDOWS.playerSeason;
-  const player = quoteValue(playerId);
-  const timeFilter = await currentSeasonTimePredicate([playerId], window);
-
-  const combatQ = `SELECT last("eliminations") AS e, last("deaths") AS d FROM "career_stats_combat" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "hero"`;
-  const assistsQ = `SELECT last("assists") AS a FROM "career_stats_assists" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "hero"`;
-  const gameQ = `SELECT last("games_played") AS gp, last("win_percentage") AS wp, last("time_played") AS tp FROM "career_stats_game" WHERE "player"='${player}' AND "gamemode"='${getGamemode()}' AND ${timeFilter} GROUP BY "hero"`;
-
-  const [combat, assists, game] = await runInfluxMultiQuery([combatQ, assistsQ, gameQ]);
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
+  const { rows: snapshot } = await loadCareerLatest();
 
   interface PerHero {
     e: number | null;
@@ -32,31 +23,18 @@ export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBr
     tp: number | null;
   }
   const byHero = new Map<string, PerHero>();
-  const ensure = (h: string): PerHero => {
-    let r = byHero.get(h);
-    if (!r) { r = { e: null, d: null, a: null, gp: null, wp: null, tp: null }; byHero.set(h, r); }
-    return r;
-  };
-
-  for (const s of parseStatementSeries<{ e: number | null; d: number | null }>(combat)) {
-    const h = heroKey(s.tags.hero ?? '');
+  for (const r of snapshot) {
+    if (r.player !== playerId || r.time < cutoff) continue;
+    const h = heroKey(r.hero);
     if (!h || h === 'all-heroes') continue;
-    const r = ensure(h);
-    r.e = safeNumber(s.rows[0]?.e);
-    r.d = safeNumber(s.rows[0]?.d);
-  }
-  for (const s of parseStatementSeries<{ a: number | null }>(assists)) {
-    const h = heroKey(s.tags.hero ?? '');
-    if (!h || h === 'all-heroes') continue;
-    ensure(h).a = safeNumber(s.rows[0]?.a);
-  }
-  for (const s of parseStatementSeries<{ gp: number | null; wp: number | null; tp: number | null }>(game)) {
-    const h = heroKey(s.tags.hero ?? '');
-    if (!h || h === 'all-heroes') continue;
-    const r = ensure(h);
-    r.gp = safeNumber(s.rows[0]?.gp);
-    r.wp = safeNumber(s.rows[0]?.wp);
-    r.tp = safeNumber(s.rows[0]?.tp);
+    byHero.set(h, {
+      e: safeNumber(r.eliminations),
+      d: safeNumber(r.deaths),
+      a: safeNumber(r.assists),
+      gp: safeNumber(r.gamesPlayed),
+      wp: safeNumber(r.winPercentage),
+      tp: safeNumber(r.timePlayed),
+    });
   }
 
   return ROLES.map((role) => {

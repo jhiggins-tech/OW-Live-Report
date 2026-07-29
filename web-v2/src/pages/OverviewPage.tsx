@@ -28,7 +28,7 @@ export default function OverviewPage() {
   );
 
   // Piggy-backs on the same three queries the team trend charts already fire,
-  // so no extra Influx work.
+  // so no extra data work.
   const { byPlayerId: trajectoryByPlayerId } = useTeamTrajectories(visible);
   const profiles = useTeamPlayerProfiles(visible);
   // fetchSupportingStats returns a Map; convert to a plain object here so the
