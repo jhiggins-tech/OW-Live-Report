@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchTeamStatCards } from '../lib/queries/charts/team/statCards';
 import { hashPlayerSet } from '../lib/queries/_shared';
+import { formatRelative } from '../lib/formatRelativeTime';
 import type { RosterPlayer } from '../types/models';
 
 function formatCompact(value: number | null | undefined): string {
@@ -8,18 +9,6 @@ function formatCompact(value: number | null | undefined): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
   return Math.round(value).toString();
-}
-
-function formatRelative(time: number | null): string {
-  if (time === null) return 'no data';
-  const delta = Date.now() - time;
-  const minutes = Math.round(delta / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
 }
 
 export default function StatCards({ players }: { players: RosterPlayer[] }) {

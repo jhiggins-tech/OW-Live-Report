@@ -1,14 +1,5 @@
 import { useHeroMeta } from '../hooks/useHeroMeta';
-
-function formatAge(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m old`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h old`;
-  const days = Math.round(hours / 24);
-  return `${days}d old`;
-}
+import { formatAge } from '../lib/formatRelativeTime';
 
 export default function HeroMetaBanner() {
   const { data } = useHeroMeta();

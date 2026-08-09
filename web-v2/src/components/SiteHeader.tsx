@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { getRuntimeConfig } from '../lib/runtimeConfig';
+import DataFreshnessPill from './DataFreshnessPill';
 
 export default function SiteHeader() {
   const location = useLocation();
@@ -15,7 +16,8 @@ export default function SiteHeader() {
         {!isOverview ? (
           <Link to="/" style={{ fontSize: '0.95rem' }}>← Team overview</Link>
         ) : null}
-        <nav style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: '0.85rem' }}>
+        <nav style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.85rem' }}>
+          <DataFreshnessPill />
           {!isOptimizer ? (
             <Link to="/optimizer" style={{ color: 'var(--muted)' }}>Optimizer</Link>
           ) : null}

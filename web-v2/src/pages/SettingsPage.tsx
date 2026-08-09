@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
+import DataFreshnessPanel from '../components/DataFreshnessPanel';
 
 export default function SettingsPage() {
   const roster = useRoster();
@@ -65,6 +66,8 @@ export default function SettingsPage() {
           </tbody>
         </table>
       </section>
+
+      <DataFreshnessPanel />
 
       <section className="panel">
         <header className="section-head">

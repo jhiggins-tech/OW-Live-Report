@@ -1,21 +1,12 @@
 import { useEffect, useState } from 'react';
 import { STALE_DATA_EVENT, type StaleDataEventDetail } from '../lib/snapshotClient';
+import { formatAge } from '../lib/formatRelativeTime';
 
 interface StaleNotice {
   oldestAgeMs: number;
   newestAgeMs: number;
   count: number;
   lastError: string;
-}
-
-function formatAge(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m old`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h old`;
-  const days = Math.round(hours / 24);
-  return `${days}d old`;
 }
 
 export default function StaleBanner() {
