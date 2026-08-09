@@ -133,6 +133,76 @@ button[aria-pressed='true'] {
 .stat-card .delta.down { color: var(--bad); }
 .stat-card .delta.flat { color: var(--muted); }
 
+.player-rank-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.player-rank-card {
+  --rank-accent: var(--muted);
+  position: relative;
+  min-width: 0;
+  min-height: 132px;
+  padding: 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--rank-accent) 12%, transparent), transparent 62%),
+    var(--panel-strong);
+  border: 1px solid color-mix(in srgb, var(--rank-accent) 34%, var(--line));
+  border-radius: 18px;
+}
+.player-rank-card::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--rank-accent);
+  opacity: 0.9;
+}
+.player-rank-card.tank { --rank-accent: var(--role-tank); }
+.player-rank-card.damage { --rank-accent: var(--role-damage); }
+.player-rank-card.support { --rank-accent: var(--role-support); }
+.player-rank-role {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rank-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.player-rank-role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 14px color-mix(in srgb, currentColor 70%, transparent);
+}
+.player-rank-value {
+  margin-top: 14px;
+  overflow-wrap: anywhere;
+  font-family: Bahnschrift, "Trebuchet MS", sans-serif;
+  font-size: clamp(1.65rem, 3vw, 2.35rem);
+  line-height: 1;
+}
+.player-rank-detail {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.player-rank-card.skeleton {
+  min-height: 132px;
+}
+
+@media (max-width: 700px) {
+  .player-rank-grid { grid-template-columns: 1fr; }
+  .player-ranks .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .chart-wrap { width: 100%; height: 280px; }
 .chart-wrap.tall { height: 360px; }
 
