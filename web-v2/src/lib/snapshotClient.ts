@@ -1,7 +1,8 @@
-// Loads the JSON snapshot datasets that scripts/fetch-snapshots.mjs bakes
-// from the TimescaleDB stats backend. The SPA no longer queries a database
-// at view time — browsers can't speak the Postgres wire protocol — so these
-// static files, refreshed hourly by CI, are the app's entire data source.
+// Loads the JSON snapshot datasets that scripts/pipeline/poll.mjs bakes from
+// the OverFast API. The SPA never queries a backend at view time, so these
+// static files, refreshed twice a day by CI, are the app's entire data
+// source. meta.layoutVersion 2 keeps the per-day roll-ups in per-season
+// directories (data/seasons/<N>/); older meta files use the flat layout.
 
 import type {
   CareerDailyRow,
@@ -21,9 +22,10 @@ const SESSION_PREFIX = 'owr-v2:snap:';
 // fallback_to_stale_cache, same as the old InfluxDB client).
 const FRESH_TTL_MS = 5 * 60 * 1000;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-// Snapshots refresh hourly; past this age the pipeline is presumed stuck
-// and the StaleBanner is told about it.
-const SNAPSHOT_STALE_MS = 4 * 60 * 60 * 1000;
+// Snapshots refresh twice a day; past this age (a poll interval plus cron
+// delay plus one missed run) the pipeline is presumed stuck and the
+// StaleBanner is told about it.
+const SNAPSHOT_STALE_MS = 30 * 60 * 60 * 1000;
 
 export const STALE_DATA_EVENT = 'owr-v2:stale-data-served';
 
@@ -82,47 +84,49 @@ function dispatchStale(source: string, ageMs: number, error: Error): void {
   window.dispatchEvent(new CustomEvent<StaleDataEventDetail>(STALE_DATA_EVENT, { detail }));
 }
 
-async function fetchSnapshot<T>(name: string): Promise<T> {
-  const mem = memory.get(name);
+// `cacheKey` names the memory/session cache entry; `rel` is the file path
+// relative to data/ (season files use a per-season key like 's25:rank-daily').
+async function fetchSnapshot<T>(cacheKey: string, rel = `snapshots/${cacheKey}.json`): Promise<T> {
+  const mem = memory.get(cacheKey);
   if (mem && Date.now() - mem.at <= FRESH_TTL_MS) return mem.body as T;
 
-  const pending = inflight.get(name);
+  const pending = inflight.get(cacheKey);
   if (pending) return pending as Promise<T>;
 
   const load = (async () => {
-    const cached = mem ?? safeSessionRead(name);
+    const cached = mem ?? safeSessionRead(cacheKey);
     if (cached && Date.now() - cached.at <= FRESH_TTL_MS) {
-      memory.set(name, cached);
+      memory.set(cacheKey, cached);
       return cached.body as T;
     }
-    const url = `${import.meta.env.BASE_URL}data/snapshots/${name}.json`.replace(/\/+/g, '/');
+    const url = `${import.meta.env.BASE_URL}data/${rel}`.replace(/\/+/g, '/');
     try {
       const res = await fetch(url, { cache: 'no-cache', headers: { Accept: 'application/json' } });
       if (!res.ok) {
-        throw new SnapshotFetchError(`HTTP ${res.status} fetching snapshot '${name}'`, name, res.status);
+        throw new SnapshotFetchError(`HTTP ${res.status} fetching snapshot '${cacheKey}'`, cacheKey, res.status);
       }
       const body = (await res.json()) as T;
-      memory.set(name, { at: Date.now(), body });
-      safeSessionSet(name, body);
+      memory.set(cacheKey, { at: Date.now(), body });
+      safeSessionSet(cacheKey, body);
       return body;
     } catch (err) {
       // Fall back to any cached body still within the 24h stale window and
       // notify listeners (StaleBanner) so the UI can flag the staleness.
       if (cached) {
         const wrapped = err instanceof Error ? err : new Error(String(err));
-        dispatchStale(name, Date.now() - cached.at, wrapped);
-        memory.set(name, cached);
+        dispatchStale(cacheKey, Date.now() - cached.at, wrapped);
+        memory.set(cacheKey, cached);
         return cached.body as T;
       }
       throw err;
     }
   })();
 
-  inflight.set(name, load);
+  inflight.set(cacheKey, load);
   try {
     return await load;
   } finally {
-    inflight.delete(name);
+    inflight.delete(cacheKey);
   }
 }
 
@@ -142,20 +146,33 @@ export function loadRankCurrent(): Promise<SnapshotFile<RankRow>> {
   return fetchSnapshot('rank-current');
 }
 
-export function loadRankDaily(): Promise<SnapshotFile<RankDailyRow>> {
-  return fetchSnapshot('rank-daily');
+type SeasonDataset = 'rank-daily' | 'career-latest' | 'career-daily' | 'career-hero-daily';
+
+// Per-season roll-ups: `season` defaults to meta.currentSeason. Meta files
+// without layoutVersion 2 predate the season directories and keep the flat
+// data/snapshots/<name>.json files.
+async function fetchSeasonDataset<T>(name: SeasonDataset, season?: number): Promise<SnapshotFile<T>> {
+  const meta = await loadMeta();
+  if (meta.layoutVersion !== 2) return fetchSnapshot(name);
+  const s = season ?? meta.currentSeason ?? null;
+  if (s === null) return { generatedAt: meta.generatedAt, rows: [] };
+  return fetchSnapshot(`s${s}:${name}`, `seasons/${s}/${name}.json`);
 }
 
-export function loadCareerLatest(): Promise<SnapshotFile<CareerLatestRow>> {
-  return fetchSnapshot('career-latest');
+export function loadRankDaily(season?: number): Promise<SnapshotFile<RankDailyRow>> {
+  return fetchSeasonDataset('rank-daily', season);
 }
 
-export function loadCareerDaily(): Promise<SnapshotFile<CareerDailyRow>> {
-  return fetchSnapshot('career-daily');
+export function loadCareerLatest(season?: number): Promise<SnapshotFile<CareerLatestRow>> {
+  return fetchSeasonDataset('career-latest', season);
 }
 
-export function loadCareerHeroDaily(): Promise<SnapshotFile<CareerHeroDailyRow>> {
-  return fetchSnapshot('career-hero-daily');
+export function loadCareerDaily(season?: number): Promise<SnapshotFile<CareerDailyRow>> {
+  return fetchSeasonDataset('career-daily', season);
+}
+
+export function loadCareerHeroDaily(season?: number): Promise<SnapshotFile<CareerHeroDailyRow>> {
+  return fetchSeasonDataset('career-hero-daily', season);
 }
 
 export function loadProfiles(): Promise<SnapshotFile<ProfileRow>> {

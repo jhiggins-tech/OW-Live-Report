@@ -1,20 +1,36 @@
-// Shapes of the JSON snapshot datasets baked by scripts/fetch-snapshots.mjs
-// from the TimescaleDB stats backend. All timestamps are epoch milliseconds;
-// `day` values are UTC day starts (the daily table's bucket boundary).
+// Shapes of the JSON snapshot datasets baked by scripts/pipeline/poll.mjs
+// from the OverFast API. All timestamps are epoch milliseconds; `day` values
+// are UTC day starts (the daily roll-up's bucket boundary).
 
 export interface SnapshotFile<TRow> {
   generatedAt: number;
+  // Present on the per-season files under data/seasons/<N>/ (layoutVersion 2).
+  season?: number;
   rows: TRow[];
 }
 
 export interface SnapshotMeta {
+  // 2 = per-season files under data/seasons/<N>/; absent = the legacy flat
+  // data/snapshots/*.json layout.
+  layoutVersion?: number;
   generatedAt: number;
   gamemode: string;
+  platform?: string;
   players: string[];
   heartbeatAt: number | null;
+  currentSeason?: number | null;
   maxSeason: number | null;
   seasonStart: number | null;
   seasonByPlayer: Record<string, number | null>;
+  // The season each player's career counters belong to (layoutVersion 2).
+  playerSeason?: Record<string, number>;
+  seasons?: Array<{ season: number; firstDay: number; lastDay: number }>;
+  lastPoll?: {
+    at: number;
+    source: string;
+    ok: string[];
+    failed: Array<{ player: string; error: string }>;
+  };
 }
 
 // competitive_rank, latest per (player, role). Field naming keeps the
@@ -89,4 +105,5 @@ export interface ProfileRow {
   title: string | null;
   endorsementLevel: number | null;
   endorsementFrame: string | null;
+  lastUpdatedAt?: number | null;
 }

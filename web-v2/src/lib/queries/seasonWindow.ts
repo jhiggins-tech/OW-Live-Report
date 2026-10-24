@@ -1,4 +1,4 @@
-import { loadRankCurrent, loadRankDaily } from '../snapshotClient';
+import { loadMeta, loadRankCurrent, loadRankDaily } from '../snapshotClient';
 import type { RosterPlayer } from '../../types/models';
 import { playerIdSet } from './_shared';
 
@@ -10,6 +10,11 @@ export async function fetchCurrentCompetitiveSeasonStart(
   players: RosterPlayer[] | readonly string[],
 ): Promise<number | null> {
   if (!players.length) return null;
+  // Season files only hold the current season, so the season starts at the
+  // first day on file. The rank-derived start below would cut off the days
+  // between a counter reset and the first new-season rank.
+  const meta = await loadMeta();
+  if (meta.layoutVersion === 2) return meta.seasonStart ?? null;
   const ids = playerIdSet(players);
   const [current, daily] = await Promise.all([loadRankCurrent(), loadRankDaily()]);
 

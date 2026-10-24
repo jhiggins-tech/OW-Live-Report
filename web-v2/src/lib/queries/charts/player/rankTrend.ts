@@ -8,8 +8,8 @@ export interface PlayerRankPoint {
   byRole: Record<Role, number | null>;
 }
 
-// Day resolution: raw hourly samples only survive 14 days server-side, so
-// the trend reads the daily table (last sample per role per UTC day).
+// Day resolution: the trend reads the daily roll-up (last sample per role
+// per UTC day), the only history the repo keeps.
 export async function fetchPlayerRankTrend(playerId: string): Promise<PlayerRankPoint[]> {
   const cutoff = Date.now() - TIME_WINDOWS.playerSeason;
   const { rows } = await loadRankDaily();
