@@ -3,7 +3,7 @@
 // optimizer bucket-rolls the per-hero stats up to per-role on the JS side
 // using HERO_CATALOG, matching the role-breakdown chart's strategy.
 
-import { loadCareerLatest, loadRankCurrent } from '../snapshotClient';
+import { loadCareerLatest, loadMeta, loadRankCurrent } from '../snapshotClient';
 import { heroRole } from '../heroCatalog';
 import { heroKey, prettyHeroName } from '../normalize/heroKey';
 import { kdaFrom, safeNumber } from '../normalize/kda';
@@ -12,6 +12,7 @@ import { playerIdSet } from './_shared';
 import { currentSeasonCutoff } from './seasonWindow';
 import { TIME_WINDOWS } from './charts/_constants';
 import type { Role, RosterPlayer } from '../../types/models';
+import type { CareerLatestRow } from '../../types/snapshots';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 const TOP_HERO_LIMIT = 5;
@@ -44,6 +45,9 @@ export interface PlayerOptimizerData {
   byRole: Record<Role, PlayerRoleStats>;
   heroesByRole: Record<Role, PlayerHeroStat[]>;
   bestRole: Role | null;
+  // Season the career stats come from when the player has no current-season
+  // data and fell back to their last season's snapshot; null = current season.
+  dataSeason: number | null;
 }
 
 function blankRoleStats(role: Role): PlayerRoleStats {
@@ -63,7 +67,7 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
   const ids = playerIdSet(players);
   const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.playerSeason);
 
-  const [career, ranks] = await Promise.all([loadCareerLatest(), loadRankCurrent()]);
+  const [career, ranks, meta] = await Promise.all([loadCareerLatest(), loadRankCurrent(), loadMeta()]);
 
   interface PerHero {
     e: number | null;
@@ -75,10 +79,9 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
   }
   // Per-player, per-hero accumulator.
   const heroData = new Map<string, Map<string, PerHero>>();
-  for (const r of career.rows) {
-    if (!ids.has(r.player) || r.time < cutoff) continue;
+  const addHeroRow = (r: CareerLatestRow) => {
     const h = heroKey(r.hero);
-    if (!h || h === 'all-heroes') continue;
+    if (!h || h === 'all-heroes') return;
     let m = heroData.get(r.player);
     if (!m) { m = new Map(); heroData.set(r.player, m); }
     m.set(h, {
@@ -89,6 +92,38 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
       wp: safeNumber(r.winPercentage),
       tp: safeNumber(r.timePlayed),
     });
+  };
+  for (const r of career.rows) {
+    if (!ids.has(r.player) || r.time < cutoff) continue;
+    addHeroRow(r);
+  }
+
+  // Last-season fallback: a player with no current-season data (counters
+  // still on an earlier season, or reset and not yet played) is rated from
+  // one snapshot of the season their counters belong to. Fallback rows skip
+  // the season cutoff, which would filter them all out.
+  const dataSeasonByPlayer = new Map<string, number>();
+  if (meta.layoutVersion === 2 && meta.playerSeason) {
+    const bySeason = new Map<number, Set<string>>();
+    for (const id of ids) {
+      const season = meta.playerSeason[id];
+      if (season === undefined || season === meta.currentSeason || heroData.has(id)) continue;
+      const group = bySeason.get(season) ?? new Set<string>();
+      group.add(id);
+      bySeason.set(season, group);
+    }
+    await Promise.all([...bySeason].map(async ([season, group]) => {
+      try {
+        const { rows } = await loadCareerLatest(season);
+        for (const r of rows) {
+          if (!group.has(r.player)) continue;
+          addHeroRow(r);
+          if (heroData.has(r.player)) dataSeasonByPlayer.set(r.player, season);
+        }
+      } catch {
+        // Optional extra data; the optimizer still works without it.
+      }
+    }));
   }
 
   // Latest rank per (player, role).
@@ -200,6 +235,6 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
       }
     }
 
-    return { player: p, byRole, heroesByRole, bestRole };
+    return { player: p, byRole, heroesByRole, bestRole, dataSeason: dataSeasonByPlayer.get(p.playerId) ?? null };
   });
 }

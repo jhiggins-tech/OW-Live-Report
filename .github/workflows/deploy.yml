@@ -45,26 +45,6 @@ jobs:
       - name: Build roster manifest
         run: pnpm run build:roster
 
-      # Ship whatever snapshots the last deploy served, then try to refresh
-      # them. If the stats backend is briefly unreachable the deploy still
-      # goes out with the previous (at worst one-deploy-old) data, and the
-      # hourly refresh-data workflow catches the site up.
-      - name: Seed data snapshots from previous deploy
-        run: |
-          if [ -d ../docs/data/snapshots ]; then
-            mkdir -p public/data
-            cp -r ../docs/data/snapshots public/data/snapshots
-          fi
-
-      - name: Refresh data snapshots
-        continue-on-error: true
-        env:
-          # Read-only, intentionally public credentials; override via repo
-          # Settings → Variables → Actions if the backend moves.
-          STATS_DB_URL: ${{ vars.STATS_DB_URL || 'postgresql://readonly:owstats-readonly@owstats.jhiggins.tech:5432/ow_stats?sslmode=require' }}
-          STATS_GAMEMODE: ${{ vars.STATS_GAMEMODE || 'competitive' }}
-        run: node scripts/fetch-snapshots.mjs
-
       - name: Build site
         env:
           # Read from repository variables when set, fall back to current
