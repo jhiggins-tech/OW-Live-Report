@@ -21,10 +21,14 @@ test('E1: full public profile -> ranks, rankSeason, all-heroes and per-hero care
   assert.equal(s.day, at('2026-10-24T00:00:00Z'));
   assert.equal(s.rankSeason, 25);
   // One entry per present role (open is null in the fixture), in role order.
+  const icons = (division, tier) => ({
+    rankIcon: `https://static.example.invalid/overwatch/ranks/${division}.png`,
+    tierIcon: `https://static.example.invalid/overwatch/tiers/${tier}.png`,
+  });
   assert.deepEqual(s.ranks, [
-    { role: 'tank', tier: 2, division: 'silver', season: 25 },
-    { role: 'damage', tier: 1, division: 'gold', season: 25 },
-    { role: 'support', tier: 4, division: 'gold', season: 25 },
+    { role: 'tank', tier: 2, division: 'silver', season: 25, ...icons('silver', 2) },
+    { role: 'damage', tier: 1, division: 'gold', season: 25, ...icons('gold', 1) },
+    { role: 'support', tier: 4, division: 'gold', season: 25, ...icons('gold', 4) },
   ]);
   assert.deepEqual(s.profile, {
     username: 'DarthKcaj',
@@ -100,8 +104,33 @@ test('E4: a role missing tier or division is skipped', () => {
   delete body.summary.competitive.pc.damage.tier;
   body.summary.competitive.pc.support.division = null;
   const s = sampleOf(body);
-  assert.deepEqual(s.ranks, [{ role: 'tank', tier: 2, division: 'silver', season: 25 }]);
+  assert.deepEqual(s.ranks.map((r) => [r.role, r.tier, r.division, r.season]), [['tank', 2, 'silver', 25]]);
   assert.equal(s.rankSeason, 25);
+});
+
+test('E7: rank insignia URLs are captured; a role without icons gives nulls', () => {
+  const body = darth();
+  const pc = body.summary.competitive.pc;
+  delete pc.damage.rank_icon; // absent
+  pc.damage.tier_icon = ''; // blank
+  pc.support.rank_icon = null;
+  pc.support.tier_icon = 42; // not a string
+  delete pc.tank.rank_icon;
+  delete pc.tank.tier_icon;
+  const s = sampleOf(body);
+  assert.deepEqual(s.ranks.map((r) => [r.role, r.rankIcon, r.tierIcon]), [
+    ['tank', null, null],
+    ['damage', null, null],
+    ['support', null, null],
+  ]);
+
+  // Untouched, every role keeps its own two URLs (the rank is still extracted).
+  const full = sampleOf(darth());
+  assert.deepEqual(full.ranks.map((r) => [r.role, r.rankIcon, r.tierIcon]), [
+    ['tank', 'https://static.example.invalid/overwatch/ranks/silver.png', 'https://static.example.invalid/overwatch/tiers/2.png'],
+    ['damage', 'https://static.example.invalid/overwatch/ranks/gold.png', 'https://static.example.invalid/overwatch/tiers/1.png'],
+    ['support', 'https://static.example.invalid/overwatch/ranks/gold.png', 'https://static.example.invalid/overwatch/tiers/4.png'],
+  ]);
 });
 
 test('E5: a stat found only in another canonical category is still mapped', () => {

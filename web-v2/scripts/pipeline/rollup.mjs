@@ -6,6 +6,7 @@
 // See plan/v3-static-season-snapshots.md, "Season assignment" and "Compact".
 
 import { COUNTER_FIELDS, GRACE_MS, MIN_SEASON_MS, SEASON_DATASETS } from './constants.mjs';
+import { noteRankIcons } from './icons.mjs';
 import { countersChanged, isCounterReset, prevAllHeroes } from './season.mjs';
 import { utcDay } from './util.mjs';
 
@@ -115,6 +116,9 @@ function writeSample(ctx, store, s, { season, current, writeCareer }) {
     // The rank row goes into the season Blizzard reported it for, which can
     // lag the player's counter season (a stale S23 rank after the S24 reset).
     const rowSeason = r.season ?? season;
+    // Insignia URLs go into the global map, not into the rows (whose
+    // contracts stay as they are); the highest season's URL wins.
+    noteRankIcons(store.rankIcons, r, { season: rowSeason, at: s.fetchedAt });
     const key = `${s.player}|${r.role}`;
     const prev = store.rankCurrent.get(key);
     store.rankCurrent.set(key, {

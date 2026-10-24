@@ -120,6 +120,48 @@ test('V1: suspicious data is a warning, not an error', () => {
   assert.ok(big.warnings.some((w) => /career-latest\.json: 5\.0 MB is over the 5 MB guideline/.test(w)));
 });
 
+test('V2: rank-icons.json is optional, and checked when present', () => {
+  const good = goodTree();
+  const rel = 'snapshots/rank-icons.json';
+  // The fixture polls carry insignia URLs, so the good tree has the file.
+  assert.ok(readJson(good, rel).divisions.gold);
+  assert.deepEqual(validateDataDir(good, { now: NOW }).errors, []);
+
+  // A tree without it (a legacy deploy, or a store that never saw an icon) is fine.
+  const without = validateMutated(good, (dir) => rmSync(join(dir, rel)));
+  assert.deepEqual(without.errors, []);
+  assert.deepEqual(without.warnings, []);
+
+  const entry = { url: 'https://static.example.invalid/x.png', season: 25 };
+  const cases = [
+    ['an http:// url', /rank-icons\.json: divisions\.gold: url "http:\/\/x\/gold\.png" is not an https:\/\/ URL/,
+      mutateJson(rel, (j) => { j.divisions.gold.url = 'http://x/gold.png'; })],
+    ['a relative url', /tiers\.3: url "\/tier\/3\.png" is not an https/,
+      mutateJson(rel, (j) => { j.tiers['3'].url = '/tier/3.png'; })],
+    ['a missing url', /divisions\.gold: url undefined is not an https/, mutateJson(rel, (j) => { delete j.divisions.gold.url; })],
+    ['a non-integer season', /divisions\.gold: season 25\.5 is not an integer/, mutateJson(rel, (j) => { j.divisions.gold.season = 25.5; })],
+    ['a string season', /tiers\.3: season "25" is not an integer/, mutateJson(rel, (j) => { j.tiers['3'].season = '25'; })],
+    ['an upper-case division key', /divisions\.Gold: division keys must be lower case/, mutateJson(rel, (j) => { j.divisions.Gold = entry; })],
+    ['an empty division key', /divisions\.: division keys must be lower case/, mutateJson(rel, (j) => { j.divisions[''] = entry; })],
+    ['tier key 0', /tiers\.0: tier keys must be "1" to "5"/, mutateJson(rel, (j) => { j.tiers['0'] = entry; })],
+    ['tier key 6', /tiers\.6: tier keys must be "1" to "5"/, mutateJson(rel, (j) => { j.tiers['6'] = entry; })],
+    ['a non-numeric tier key', /tiers\.gold: tier keys must be/, mutateJson(rel, (j) => { j.tiers.gold = entry; })],
+    ['an entry that is not an object', /divisions\.silver: is not \{ url, season \}/, mutateJson(rel, (j) => { j.divisions.silver = 'https://x/silver.png'; })],
+    ['no divisions', /rank-icons\.json: "divisions" is not an object/, mutateJson(rel, (j) => { delete j.divisions; })],
+    ['tiers as an array', /rank-icons\.json: "tiers" is not an object/, mutateJson(rel, (j) => { j.tiers = []; })],
+    ['no generatedAt', /rank-icons\.json: no numeric generatedAt/, mutateJson(rel, (j) => { delete j.generatedAt; })],
+    ['an unparseable file', /rank-icons\.json: does not parse/, (dir) => writeFileSync(join(dir, rel), '{"generatedAt":1,')],
+  ];
+  for (const [label, pattern, mutate] of cases) {
+    const result = validateMutated(good, mutate);
+    assert.ok(hasError(result, pattern), `${label}: expected ${pattern}, got ${JSON.stringify(result.errors)}`);
+  }
+
+  // Division names beyond the known eight are fine as long as they are lower case.
+  const extra = validateMutated(good, mutateJson(rel, (j) => { j.divisions.ultimate = entry; }));
+  assert.deepEqual(extra.errors, []);
+});
+
 test('V1: the CLI prints annotations and sets the exit code', () => {
   const good = goodTree();
   const run = (dir) => spawnSync(process.execPath, [VALIDATE_CLI, '--data-dir', dir], { encoding: 'utf8' });

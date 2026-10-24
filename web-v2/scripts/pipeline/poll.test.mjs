@@ -134,8 +134,9 @@ test('P1: day 1 twice then day 2 keeps one row per series per day and only rewri
   assert.match(first.out, /^7 of 7 players fetched; current season 25$/m);
   assert.match(first.out, /^player\s+\| status \| season \| reason$/m);
   assert.match(first.out, /^DarthKcaj-1443\s+\| ok\s+\| 25\s+\| new-player$/m);
-  assert.match(first.out, /^Files written \(20\), 0 unchanged:$/m);
+  assert.match(first.out, /^Files written \(21\), 0 unchanged:$/m);
   assert.match(first.out, /^ {2}seasons\/25\/rank-daily\.json$/m);
+  assert.match(first.out, /^ {2}snapshots\/rank-icons\.json$/m);
 
   const meta1 = readJson(s.dataDir, 'snapshots/meta.json');
   assert.equal(meta1.layoutVersion, 2);
@@ -156,8 +157,10 @@ test('P1: day 1 twice then day 2 keeps one row per series per day and only rewri
   assert.equal(meta2.generatedAt, DAY1_PM);
   assert.equal(meta2.heartbeatAt, DAY1_PM);
   assert.match(second.out, /^DarthKcaj-1443\s+\| ok\s+\| 25\s+\| unchanged$/m);
-  // Written: season 25's career-latest, rank-current, profiles, state and meta.
-  assert.match(second.out, /^Files written \(5\), 15 unchanged:$/m);
+  // Written: season 25's career-latest, rank-current, profiles, state and meta
+  // (the icon map saw the same URLs again, so rank-icons.json is unchanged).
+  assert.match(second.out, /^Files written \(5\), 16 unchanged:$/m);
+  assert.ok(!second.out.includes('  snapshots/rank-icons.json'));
 
   // Nothing but the "last seen" timestamps moved: every daily roll-up and
   // every frozen season file is byte-identical, so `generatedAt` is kept.
@@ -493,7 +496,7 @@ test('P11: the CLI entry point runs, prints the table and sets the exit code', (
   ], { encoding: 'utf8', env });
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
   assert.match(ok.stdout, /^player\s+\| status \| season \| reason$/m);
-  assert.match(ok.stdout, /^Files written \(20\)/m);
+  assert.match(ok.stdout, /^Files written \(21\)/m);
   assert.deepEqual(validateDataDir(s.dataDir, { now: DAY1_PM }), { errors: [], warnings: [] });
 
   const before = readTree(s.dataDir);

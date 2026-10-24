@@ -354,8 +354,14 @@ test('B3: pivoting an extractSample() back from narrow rows gives the same Sampl
       assert.deepEqual(pivoted, [], `${id}: nothing to ingest`);
       continue;
     }
-    // The DB keeps the season per role row, so a season with no ranked role is lost.
-    const expected = { ...sample, profile: null, rankSeason: sample.ranks.length ? sample.rankSeason : null };
+    // The DB keeps the season per role row, so a season with no ranked role is
+    // lost. It keeps no insignia URLs either, so those ranks come back without.
+    const expected = {
+      ...sample,
+      profile: null,
+      rankSeason: sample.ranks.length ? sample.rankSeason : null,
+      ranks: sample.ranks.map(({ rankIcon, tierIcon, ...rank }) => rank),
+    };
     assert.deepEqual(pivoted, [[D0, [expected]]], id);
   }
 });

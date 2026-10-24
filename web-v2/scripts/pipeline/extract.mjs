@@ -23,6 +23,7 @@ const CAREER_MAP = [
 const CATEGORIES = ['combat', 'assists', 'average', 'game'];
 
 const str = (v) => (typeof v === 'string' ? v : null);
+const url = (v) => (typeof v === 'string' && v !== '' ? v : null);
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // One hero's `[{category, stats: [{key, value}]}]` list → the 9 career fields.
@@ -73,7 +74,11 @@ export function extractSample(playerId, body, fetchedAt, opts = {}) {
     if (!isObject(r)) continue;
     const tier = toNumber(r.tier);
     if (tier === null || typeof r.division !== 'string' || r.division === '') continue;
-    ranks.push({ role, tier, division: r.division, season: rankSeason });
+    // rank_icon is the tier badge, tier_icon the division-number overlay;
+    // icons.mjs turns them into the global rank-insignia map.
+    ranks.push({
+      role, tier, division: r.division, season: rankSeason, rankIcon: url(r.rank_icon), tierIcon: url(r.tier_icon),
+    });
   }
 
   let profile = null;

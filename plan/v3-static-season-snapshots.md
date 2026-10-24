@@ -249,6 +249,23 @@ Header: `{"season":N,"generatedAt":ms,"rows":[…]}`.
   title, endorsementLevel, endorsementFrame, lastUpdatedAt}`. `lastUpdatedAt`
   is new and optional (OverFast `summary.last_updated_at × 1000`, or null).
   Sort: player.
+- `rank-icons.json` (optional, pretty-printed; written once a poll has seen a
+  rank insignia URL): the official insignia for the player page's rank cards.
+  The URLs carry content hashes and older profiles use an older format, so
+  they are captured from OverFast's `rank_icon` / `tier_icon`, never derived:
+
+  ```json
+  { "generatedAt": 1792803080655,
+    "divisions": { "gold": { "url": "https://static.playoverwatch.com/…/Rank_GoldTier.8d40….png", "season": 25 } },
+    "tiers":     { "3":    { "url": "https://static.playoverwatch.com/…/TierDivision_3.e9d8….png", "season": 25 } } }
+  ```
+
+  `divisions` is keyed by the lower-case tier **name** and `tiers` by the
+  division **number** `"1"`–`"5"` (the naming quirk again). Every ingested rank
+  updates the map; on a conflict the URL seen with the highest rank `season`
+  wins (a rank with a null season counts as its player's season), and on a tie
+  the newer poll. Rows keep their contracts: no icon fields are added to them.
+  Like the datasets, the file is only rewritten when its content changes.
 - `meta.json` (pretty-printed). Fields already in today's `SnapshotMeta` keep their meaning:
 
 ```json
@@ -332,7 +349,8 @@ from `seasons/<players[p].season>/career-latest.json` (the `all-heroes` row).
   fetchedAt: 1792803080655,
   day: 1792800000000,
   rankSeason: 25,                       // summary.competitive.pc.season ?? null
-  ranks: [{ role: 'support', tier: 3, division: 'gold', season: 25 }],
+  ranks: [{ role: 'support', tier: 3, division: 'gold', season: 25,
+            rankIcon: 'https://…/Rank_GoldTier.….png', tierIcon: 'https://…/TierDivision_3.….png' }],
   profile: { username, avatar, namecard, title, endorsementLevel, endorsementFrame, lastUpdatedAt } | null,
   career: { 'all-heroes': { eliminations, deaths, assists, healingDone, healingPer10Min,
                             gamesWon, gamesPlayed, winPercentage, timePlayed }, ana: { … } } | null,
@@ -342,7 +360,7 @@ from `seasons/<players[p].season>/career-latest.json` (the `all-heroes` row).
 | Sample field | OverFast path | Rule |
 |---|---|---|
 | `rankSeason` | `summary.competitive[platform].season` | null if missing |
-| `ranks[]` | `summary.competitive[platform][role]` for each role | skip a role if it's null or lacks `division`/`tier`; `season` = `rankSeason` |
+| `ranks[]` | `summary.competitive[platform][role]` for each role | skip a role if it's null or lacks `division`/`tier`; `season` = `rankSeason`; `rankIcon` / `tierIcon` = `rank_icon` / `tier_icon` (string, else null) |
 | `profile.username` / `avatar` / `namecard` / `title` | `summary.<same>` | string or null |
 | `profile.endorsementLevel` / `endorsementFrame` | `summary.endorsement.level` / `.frame` | |
 | `profile.lastUpdatedAt` | `summary.last_updated_at` | seconds → ms, null if missing |

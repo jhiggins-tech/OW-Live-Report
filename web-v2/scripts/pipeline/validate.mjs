@@ -7,8 +7,9 @@
 //
 // Errors (exit 1) are structural: layout version, files that don't parse,
 // wrong row shapes, duplicate or unsorted rows, bad `day` values, season
-// mismatches. Warnings are suspicious but not fatal: counters falling inside
-// a season, very large files, roster players missing from profiles.json.
+// mismatches, a malformed snapshots/rank-icons.json (which is optional).
+// Warnings are suspicious but not fatal: counters falling inside a season,
+// very large files, roster players missing from profiles.json.
 // Output uses GitHub's `::error::` / `::warning::` annotation syntax.
 // See plan/v3-static-season-snapshots.md, "Failure handling".
 
@@ -16,6 +17,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COUNTER_FIELDS, GLOBAL_DATASETS, LAYOUT_VERSION, SEASON_DATASETS } from './constants.mjs';
+import { ICON_TIER_KEYS, RANK_ICONS_FILE, isIconUrl } from './icons.mjs';
 import { DAY_MS, compareBy, utcDay } from './util.mjs';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -171,6 +173,32 @@ export function validateDataDir(dataDir, { now = Date.now() } = {}) {
     const have = new Set(profileRows.map((r) => r?.player));
     for (const player of meta.players) {
       if (!have.has(player)) warn(`snapshots/profiles.json: roster player ${player} has no profile yet`);
+    }
+  }
+
+  // --- rank-icons.json (optional: legacy trees and fresh stores don't have it) ---
+  if (existsSync(join(dataDir, RANK_ICONS_FILE))) {
+    const icons = readJson(RANK_ICONS_FILE);
+    const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (icons) {
+      if (!Number.isFinite(icons.generatedAt)) error(`${RANK_ICONS_FILE}: no numeric generatedAt`);
+      for (const kind of ['divisions', 'tiers']) {
+        if (!isObject(icons[kind])) {
+          error(`${RANK_ICONS_FILE}: "${kind}" is not an object`);
+          continue;
+        }
+        for (const [key, entry] of Object.entries(icons[kind])) {
+          const at = `${RANK_ICONS_FILE}: ${kind}.${key}`;
+          if (kind === 'divisions' && (key === '' || key !== key.toLowerCase())) error(`${at}: division keys must be lower case`);
+          if (kind === 'tiers' && !ICON_TIER_KEYS.includes(key)) error(`${at}: tier keys must be "1" to "5"`);
+          if (!isObject(entry)) {
+            error(`${at}: is not { url, season }`);
+            continue;
+          }
+          if (!isIconUrl(entry.url)) error(`${at}: url ${JSON.stringify(entry.url)} is not an https:// URL`);
+          if (!Number.isInteger(entry.season)) error(`${at}: season ${JSON.stringify(entry.season)} is not an integer`);
+        }
+      }
     }
   }
 

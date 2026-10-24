@@ -4,6 +4,7 @@
 // plan/v3-static-season-snapshots.md, "Data contract":
 //
 //   <dataDir>/snapshots/{meta,rank-current,profiles}.json   global "now" files
+//   <dataDir>/snapshots/rank-icons.json                     rank insignia URLs (icons.mjs)
 //   <dataDir>/seasons/<N>/{rank-daily,career-daily,career-hero-daily,career-latest}.json
 //   <dataDir>/pipeline/state.json                           the poller's memory
 //
@@ -14,6 +15,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { GLOBAL_DATASETS, SEASON_DATASETS } from './constants.mjs';
+import {
+  RANK_ICONS_FILE, emptyRankIcons, parseRankIcons, rankIconCount, renderRankIcons,
+} from './icons.mjs';
 import { compareBy } from './util.mjs';
 
 const STATE_VERSION = 1;
@@ -35,6 +39,7 @@ export function emptyStore() {
     lastIngestAt: null, // newest `now` ingestPoll has seen; stamps changed files
     rankCurrent: new Map(), // `${player}|${role}` -> RankRow
     profiles: new Map(), // player -> ProfileRow
+    rankIcons: emptyRankIcons(), // division name / number -> insignia URL (icons.mjs)
     seasons: new Map(), // season -> bucket
     bucket(n) {
       let b = store.seasons.get(n);
@@ -126,8 +131,9 @@ function readRows(path) {
   return rows;
 }
 
-// Reads the data tree. A missing or empty tree gives an empty store. Legacy
-// flat files in snapshots/ (rank-daily.json, career-*.json) are ignored.
+// Reads the data tree. A missing or empty tree gives an empty store (and no
+// rank-icons.json, which is optional). Legacy flat files in snapshots/
+// (rank-daily.json, career-*.json) are ignored.
 export function loadStore(dataDir) {
   const store = emptyStore();
 
@@ -151,6 +157,9 @@ export function loadStore(dataDir) {
   for (const [name, spec] of Object.entries(GLOBAL_DATASETS)) {
     for (const row of readRows(join(dataDir, 'snapshots', `${spec.file}.json`))) putRow(spec, store[name], row);
   }
+
+  const iconsPath = join(dataDir, RANK_ICONS_FILE);
+  if (existsSync(iconsPath)) store.rankIcons = parseRankIcons(readJson(iconsPath), iconsPath);
 
   const seasonsDir = join(dataDir, 'seasons');
   if (existsSync(seasonsDir)) {
@@ -211,7 +220,9 @@ export function saveStore(store, dataDir, meta = store.meta ?? store.previousMet
   const unchanged = [];
   const generatedAt = store.lastIngestAt ?? meta?.generatedAt ?? Date.now();
 
-  const saveDataset = (rel, season, rows) => {
+  // `render(generatedAt)` gives the file's text. The file is left alone when
+  // that text, rendered with the generatedAt already on disk, is what's there.
+  const saveRendered = (rel, render) => {
     const path = join(dataDir, rel);
     const current = readText(path);
     if (current !== null) {
@@ -221,15 +232,15 @@ export function saveStore(store, dataDir, meta = store.meta ?? store.previousMet
       } catch {
         // Unparseable: fall through and rewrite.
       }
-      if (Number.isFinite(parsed?.generatedAt)
-        && renderFile({ season, generatedAt: parsed.generatedAt }, rows) === current) {
+      if (Number.isFinite(parsed?.generatedAt) && render(parsed.generatedAt) === current) {
         unchanged.push(rel);
         return;
       }
     }
-    writeText(path, renderFile({ season, generatedAt }, rows));
+    writeText(path, render(generatedAt));
     written.push(rel);
   };
+  const saveDataset = (rel, season, rows) => saveRendered(rel, (at) => renderFile({ season, generatedAt: at }, rows));
 
   for (const season of nonEmptySeasons(store)) {
     for (const [name, spec] of Object.entries(SEASON_DATASETS)) {
@@ -238,6 +249,11 @@ export function saveStore(store, dataDir, meta = store.meta ?? store.previousMet
   }
   for (const [name, spec] of Object.entries(GLOBAL_DATASETS)) {
     saveDataset(`snapshots/${spec.file}.json`, undefined, globalRows(store, name));
+  }
+
+  // Optional: nothing is written until a poll has captured at least one URL.
+  if (rankIconCount(store.rankIcons) > 0) {
+    saveRendered(RANK_ICONS_FILE, (at) => renderRankIcons(store.rankIcons, at));
   }
 
   const stateRel = 'pipeline/state.json';
