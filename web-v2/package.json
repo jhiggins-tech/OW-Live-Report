@@ -12,7 +12,10 @@
     "build": "pnpm run prebuild && tsc --noEmit && vite build && pnpm run build:stubs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "fetch:snapshots": "node scripts/fetch-snapshots.mjs"
+    "fetch:snapshots": "node scripts/fetch-snapshots.mjs",
+    "test:pipeline": "node --test scripts/pipeline/*.test.mjs",
+    "poll": "node scripts/pipeline/poll.mjs",
+    "validate:data": "node scripts/pipeline/validate.mjs --data-dir ../docs/data"
   },
   "dependencies": {
     "@tanstack/query-sync-storage-persister": "^5.59.0",
