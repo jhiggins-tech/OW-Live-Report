@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { CartesianGrid, Cell, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts';
-import { Link } from 'react-router-dom';
+import SeasonLink from '../SeasonLink';
 import { fetchPlayerScatter } from '../../lib/queries/charts/team/playerScatter';
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import type { RosterPlayer } from '../../types/models';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const PLAYER_COLORS = [
   '#59c2ff',
@@ -28,9 +29,10 @@ export default function PlayerScatterChart({ players }: { players: RosterPlayer[
     return m;
   }, [players]);
 
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'playerScatter', hashPlayerSet(players)],
-    queryFn: () => fetchPlayerScatter(players),
+    queryKey: ['team', 'playerScatter', hashPlayerSet(players), season],
+    queryFn: () => fetchPlayerScatter(players, season),
     enabled: players.length > 0,
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
@@ -95,14 +97,14 @@ export default function PlayerScatterChart({ players }: { players: RosterPlayer[
       </div>
       <div className="scatter-legend">
         {coloredPoints.map((p) => (
-          <Link key={p.slug} to={`/players/${p.slug}`} className="scatter-legend-item">
+          <SeasonLink key={p.slug} to={`/players/${p.slug}`} className="scatter-legend-item">
             <span
               className="scatter-legend-swatch"
               style={{ backgroundColor: p.color, borderColor: p.color }}
               aria-hidden="true"
             />
             {p.display}
-          </Link>
+          </SeasonLink>
         ))}
       </div>
     </>

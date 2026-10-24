@@ -3,15 +3,17 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { fetchTeamKdaOverTime } from '../../lib/queries/charts/team/kdaOverTime';
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import type { RosterPlayer } from '../../types/models';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 function formatDate(t: number): string {
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 }
 
 export default function TeamKdaChart({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'kdaOverTime', hashPlayerSet(players)],
-    queryFn: () => fetchTeamKdaOverTime(players),
+    queryKey: ['team', 'kdaOverTime', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamKdaOverTime(players, season),
     enabled: players.length > 0,
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;

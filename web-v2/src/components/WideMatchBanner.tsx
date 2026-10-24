@@ -3,11 +3,13 @@ import { fetchTeamWideMatch } from '../lib/queries/teamWideMatch';
 import { rankLabelFromOrdinal } from '../lib/normalize/rankOrdinal';
 import { hashPlayerSet } from '../lib/queries/_shared';
 import type { RosterPlayer } from '../types/models';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 export default function WideMatchBanner({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'wideMatch', hashPlayerSet(players)],
-    queryFn: () => fetchTeamWideMatch(players),
+    queryKey: ['team', 'wideMatch', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamWideMatch(players, season),
     enabled: players.length > 0,
   });
 

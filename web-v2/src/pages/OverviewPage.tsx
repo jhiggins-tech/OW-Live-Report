@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
 import { useTeamTrajectories } from '../hooks/useTeamTrajectories';
 import { useTeamPlayerProfiles } from '../hooks/useTeamPlayerProfiles';
+import SeasonLink from '../components/SeasonLink';
 import StatCards from '../components/StatCards';
 import RosterGrid from '../components/RosterGrid';
 import WideMatchBanner from '../components/WideMatchBanner';
@@ -17,6 +17,7 @@ import HeroPoolBar from '../components/charts/HeroPoolBar';
 import TeamHealingChart from '../components/charts/TeamHealingChart';
 import { fetchSupportingStats } from '../lib/queries/supportingStats';
 import { hashPlayerSet } from '../lib/queries/_shared';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 export default function OverviewPage() {
   const roster = useRoster();
@@ -31,12 +32,13 @@ export default function OverviewPage() {
   // so no extra data work.
   const { byPlayerId: trajectoryByPlayerId } = useTeamTrajectories(visible);
   const profiles = useTeamPlayerProfiles(visible);
+  const { season } = useSelectedSeason();
   // fetchSupportingStats returns a Map; convert to a plain object here so the
   // persisted query cache stays JSON-serialisable (a Map serialises to {}).
   const supporting = useQuery({
-    queryKey: ['team', 'supportingStats', hashPlayerSet(visible)],
+    queryKey: ['team', 'supportingStats', hashPlayerSet(visible), season],
     queryFn: async () =>
-      Object.fromEntries(await fetchSupportingStats(visible.map((p) => p.playerId))),
+      Object.fromEntries(await fetchSupportingStats(visible.map((p) => p.playerId), season)),
     enabled: visible.length > 0,
   });
   const supportingByPlayerId = supporting.data ?? {};
@@ -91,7 +93,7 @@ export default function OverviewPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Team hero pool</h2>
-          <p>Top heroes by current-season team playtime</p>
+          <p>Top heroes by team playtime this season</p>
         </header>
         <HeroPoolBar players={visible} />
       </section>
@@ -112,7 +114,7 @@ export default function OverviewPage() {
             {hidden.size > 0 ? (
               <>
                 {' · '}
-                <Link to="/settings">manage hidden</Link>
+                <SeasonLink to="/settings">manage hidden</SeasonLink>
               </>
             ) : null}
           </p>

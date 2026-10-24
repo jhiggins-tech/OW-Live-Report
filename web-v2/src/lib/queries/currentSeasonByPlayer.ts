@@ -9,9 +9,12 @@ export interface CurrentSeasonByPlayer {
   maxSeason: number | null;
 }
 
-export async function fetchCurrentSeasonByPlayer(players: RosterPlayer[]): Promise<CurrentSeasonByPlayer> {
+export async function fetchCurrentSeasonByPlayer(
+  players: RosterPlayer[],
+  season?: number,
+): Promise<CurrentSeasonByPlayer> {
   const ids = playerIdSet(players);
-  const { rows } = await loadRankCurrent();
+  const { rows } = await loadRankCurrent(season);
 
   // Latest sample per player (any role) — the old last("season") GROUP BY
   // "player" semantics.

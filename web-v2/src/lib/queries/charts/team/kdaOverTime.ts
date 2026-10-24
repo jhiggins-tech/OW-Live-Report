@@ -1,6 +1,7 @@
 import { loadCareerDaily } from '../../../snapshotClient';
 import { kdaFrom } from '../../../normalize/kda';
 import { playerIdSet } from '../../_shared';
+import { windowEnd } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 import type { RosterPlayer } from '../../../../types/models';
 
@@ -10,11 +11,11 @@ export interface TeamKdaPoint {
   byPlayer: Record<string, number | null>;
 }
 
-export async function fetchTeamKdaOverTime(players: RosterPlayer[]): Promise<TeamKdaPoint[]> {
+export async function fetchTeamKdaOverTime(players: RosterPlayer[], season?: number): Promise<TeamKdaPoint[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
-  const cutoff = Date.now() - TIME_WINDOWS.teamSeason;
-  const { rows } = await loadCareerDaily();
+  const cutoff = (await windowEnd(season)) - TIME_WINDOWS.teamSeason;
+  const { rows } = await loadCareerDaily(season);
 
   const buckets = new Map<number, Map<string, { e: number | null; d: number | null; a: number | null }>>();
   for (const r of rows) {

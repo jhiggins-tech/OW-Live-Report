@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchPlayerWinRateTrend } from '../../lib/queries/charts/player/winRateTrend';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
 export default function PlayerWinRateTrend({ playerId }: { playerId: string }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'winRateTrend', playerId],
-    queryFn: () => fetchPlayerWinRateTrend(playerId),
+    queryKey: ['player', 'winRateTrend', playerId, season],
+    queryFn: () => fetchPlayerWinRateTrend(playerId, season),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load win-rate trend.</div>;

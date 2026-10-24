@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useRoster } from '../hooks/useRoster';
 import { fetchLatestPlayerProfile } from '../lib/queries/latestPlayerProfile';
+import SeasonLink from '../components/SeasonLink';
 import PlayerRankTrend from '../components/charts/PlayerRankTrend';
 import PlayerKdaTrend from '../components/charts/PlayerKdaTrend';
 import PlayerWinRateTrend from '../components/charts/PlayerWinRateTrend';
@@ -70,7 +71,7 @@ export default function PlayerPage() {
       <div className="panel">
         <h2>Player not found</h2>
         <p className="lede">No roster entry matched <code>{slug}</code>.</p>
-        <Link to="/">Back to overview</Link>
+        <SeasonLink to="/">Back to overview</SeasonLink>
       </div>
     );
   }
@@ -135,7 +136,7 @@ export default function PlayerPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Role breakdown</h2>
-          <p>Aggregated from current-season per-hero stats via hero→role catalog</p>
+          <p>Aggregated from the season's per-hero stats via hero→role catalog</p>
         </header>
         <RoleBreakdown playerId={player.playerId} />
       </section>
@@ -143,7 +144,7 @@ export default function PlayerPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Hero usage</h2>
-          <p>Weekly current-season playtime snapshots, top heroes</p>
+          <p>Weekly playtime snapshots this season, top heroes</p>
         </header>
         <HeroUsageStacked playerId={player.playerId} hiddenHeroes={hidden} />
       </section>
@@ -151,7 +152,7 @@ export default function PlayerPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Hero performance</h2>
-          <p>Weekly current-season KDA snapshots</p>
+          <p>Weekly KDA snapshots this season</p>
         </header>
         <HeroPerfLines playerId={player.playerId} hiddenHeroes={hidden} />
       </section>

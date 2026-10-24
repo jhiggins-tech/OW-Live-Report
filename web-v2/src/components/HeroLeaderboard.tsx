@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchPlayerHeroLeaderboard } from '../lib/queries/charts/player/heroLeaderboard';
 import { useHeroMeta } from '../hooks/useHeroMeta';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 function fmtHours(seconds: number): string {
   const hrs = seconds / 3600;
@@ -30,9 +31,10 @@ export default function HeroLeaderboard({
   hiddenHeroes: Set<string>;
   onToggle: (hero: string) => void;
 }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'heroLeaderboard', playerId],
-    queryFn: () => fetchPlayerHeroLeaderboard(playerId),
+    queryKey: ['player', 'heroLeaderboard', playerId, season],
+    queryFn: () => fetchPlayerHeroLeaderboard(playerId, season),
   });
   const meta = useHeroMeta();
   if (query.isLoading) return <div className="skeleton chart-wrap" />;

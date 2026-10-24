@@ -1,5 +1,6 @@
 import { loadRankDaily } from '../../../snapshotClient';
 import { rankOrdinal } from '../../../normalize/rankOrdinal';
+import { windowEnd } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 import type { Role } from '../../../../types/models';
 
@@ -10,9 +11,9 @@ export interface PlayerRankPoint {
 
 // Day resolution: the trend reads the daily roll-up (last sample per role
 // per UTC day), the only history the repo keeps.
-export async function fetchPlayerRankTrend(playerId: string): Promise<PlayerRankPoint[]> {
-  const cutoff = Date.now() - TIME_WINDOWS.playerSeason;
-  const { rows } = await loadRankDaily();
+export async function fetchPlayerRankTrend(playerId: string, season?: number): Promise<PlayerRankPoint[]> {
+  const cutoff = (await windowEnd(season)) - TIME_WINDOWS.playerSeason;
+  const { rows } = await loadRankDaily(season);
 
   const points = new Map<number, Record<Role, number | null>>();
   const ensure = (t: number) => {

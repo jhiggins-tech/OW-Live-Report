@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import SeasonLink from '../components/SeasonLink';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
 
@@ -43,9 +43,9 @@ export default function SettingsPage() {
               return (
                 <tr key={p.slug} style={{ opacity: isHidden ? 0.55 : 1 }}>
                   <td>
-                    <Link to={`/players/${p.slug}`} style={{ color: 'inherit' }}>
+                    <SeasonLink to={`/players/${p.slug}`} style={{ color: 'inherit' }}>
                       {p.display}
-                    </Link>
+                    </SeasonLink>
                   </td>
                   <td style={{ color: 'var(--muted)' }}>{p.battleTag}</td>
                   <td style={{ color: 'var(--muted)' }}>{p.notes ?? ''}</td>

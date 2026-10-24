@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import SeasonLink from '../components/SeasonLink';
 import { useRoster } from '../hooks/useRoster';
 import { useHiddenPlayers } from '../hooks/useHiddenPlayers';
 import { useHeroMeta } from '../hooks/useHeroMeta';
@@ -11,6 +11,7 @@ import { hashPlayerSet } from '../lib/queries/_shared';
 import type { HeroMeta } from '../lib/queries/heroMeta';
 import type { OverFastPlayerSummary } from '../lib/queries/overfastPlayerSummary';
 import type { Role, RosterPlayer } from '../types/models';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 const ROLE_OPTIONS: Array<{ value: Role | 'auto' | 'bench'; label: string }> = [
   { value: 'auto', label: 'Auto' },
@@ -91,12 +92,12 @@ function AssignmentCard({
           <span className="lineup-card-avatar lineup-card-avatar--empty" aria-hidden="true" />
         )}
         <div className="lineup-card-identity">
-          <Link
+          <SeasonLink
             to={`/players/${a.player.slug}`}
             className="lineup-card-name"
           >
             {a.player.display}
-          </Link>
+          </SeasonLink>
           <div className="lineup-card-meta">
             <span className={`role-pill ${a.role}`}>
               {competitive?.roleIcon ? (
@@ -154,9 +155,10 @@ export default function OptimizerPage() {
 
   const [locks, setLocks] = useState<LockMap>({});
 
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'optimizerData', hashPlayerSet(visible)],
-    queryFn: () => fetchOptimizerData(visible),
+    queryKey: ['team', 'optimizerData', hashPlayerSet(visible), season],
+    queryFn: () => fetchOptimizerData(visible, season),
     enabled: visible.length > 0,
   });
   const profiles = useTeamPlayerProfiles(visible);
@@ -318,7 +320,7 @@ export default function OptimizerPage() {
               return (
                 <tr key={p.slug}>
                   <td>
-                    <Link to={`/players/${p.slug}`} style={{ color: 'inherit' }}>{p.display}</Link>
+                    <SeasonLink to={`/players/${p.slug}`} style={{ color: 'inherit' }}>{p.display}</SeasonLink>
                   </td>
                   <td style={{ color: 'var(--muted)' }}>{p.lockedRole ?? '—'}</td>
                   <td>

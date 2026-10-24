@@ -3,18 +3,20 @@ import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchPlayerHeroPerf } from '../../lib/queries/charts/player/heroPerf';
 import { fetchPlayerHeroUsage } from '../../lib/queries/charts/player/heroUsage';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const COLORS = ['#59c2ff', '#41d8b7', '#ffb84f', '#ff7f73', '#a78bfa', '#f472b6', '#34d399', '#fbbf24'];
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
 export default function HeroPerfLines({ playerId, hiddenHeroes }: { playerId: string; hiddenHeroes: Set<string> }) {
+  const { season } = useSelectedSeason();
   const usage = useQuery({
-    queryKey: ['player', 'heroUsage', playerId],
-    queryFn: () => fetchPlayerHeroUsage(playerId),
+    queryKey: ['player', 'heroUsage', playerId, season],
+    queryFn: () => fetchPlayerHeroUsage(playerId, season),
   });
   const perf = useQuery({
-    queryKey: ['player', 'heroPerf', playerId],
-    queryFn: () => fetchPlayerHeroPerf(playerId),
+    queryKey: ['player', 'heroPerf', playerId, season],
+    queryFn: () => fetchPlayerHeroPerf(playerId, season),
   });
 
   const heroes = useMemo(

@@ -34,7 +34,7 @@ const queryClient = new QueryClient({
 // invalidates any sessionStorage caches that pre-date the schema change.
 const persister = createSyncStoragePersister({
   storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
-  key: 'owr-v2:react-query:v4',
+  key: 'owr-v2:react-query:v5',
   throttleTime: 1000,
 });
 

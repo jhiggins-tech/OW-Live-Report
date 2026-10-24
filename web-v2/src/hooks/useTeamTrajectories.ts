@@ -13,6 +13,7 @@ import { computeTrajectory, type TrajectoryResult } from '../lib/trajectory';
 import { hashPlayerSet } from '../lib/queries/_shared';
 import type { SeriesPoint } from '../lib/trend';
 import type { RosterPlayer } from '../types/models';
+import { useSelectedSeason } from './useSelectedSeason';
 
 export interface UseTeamTrajectories {
   byPlayerId: Record<string, TrajectoryResult>;
@@ -23,22 +24,23 @@ export interface UseTeamTrajectories {
 export function useTeamTrajectories(players: RosterPlayer[]): UseTeamTrajectories {
   const enabled = players.length > 0;
   const setHash = hashPlayerSet(players);
+  const { season } = useSelectedSeason();
 
   const results = useQueries({
     queries: [
       {
-        queryKey: ['team', 'kdaOverTime', setHash],
-        queryFn: () => fetchTeamKdaOverTime(players),
+        queryKey: ['team', 'kdaOverTime', setHash, season],
+        queryFn: () => fetchTeamKdaOverTime(players, season),
         enabled,
       },
       {
-        queryKey: ['team', 'winRateOverTime', setHash],
-        queryFn: () => fetchTeamWinRateOverTime(players),
+        queryKey: ['team', 'winRateOverTime', setHash, season],
+        queryFn: () => fetchTeamWinRateOverTime(players, season),
         enabled,
       },
       {
-        queryKey: ['team', 'rankOverTime', setHash],
-        queryFn: () => fetchTeamRankOverTime(players),
+        queryKey: ['team', 'rankOverTime', setHash, season],
+        queryFn: () => fetchTeamRankOverTime(players, season),
         enabled,
       },
     ],

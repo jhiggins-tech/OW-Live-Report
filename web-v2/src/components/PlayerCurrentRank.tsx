@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchCurrentPlayerRanks } from '../lib/queries/currentPlayerRanks';
 import type { Role } from '../types/models';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 
@@ -19,9 +20,10 @@ function formatSnapshotDate(time: number): string {
 }
 
 export default function PlayerCurrentRank({ playerId }: { playerId: string }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'currentRanks', playerId],
-    queryFn: () => fetchCurrentPlayerRanks(playerId),
+    queryKey: ['player', 'currentRanks', playerId, season],
+    queryFn: () => fetchCurrentPlayerRanks(playerId, season),
     enabled: playerId.length > 0,
   });
 

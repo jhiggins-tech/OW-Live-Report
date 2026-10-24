@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchSupportingStats } from '../lib/queries/supportingStats';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 function formatCompact(value: number | null): string {
   if (value === null) return '—';
@@ -9,9 +10,10 @@ function formatCompact(value: number | null): string {
 }
 
 export default function PlayerSupportingStats({ playerId }: { playerId: string }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'supportingStats', playerId],
-    queryFn: async () => (await fetchSupportingStats([playerId])).get(playerId) ?? null,
+    queryKey: ['player', 'supportingStats', playerId, season],
+    queryFn: async () => (await fetchSupportingStats([playerId], season)).get(playerId) ?? null,
     enabled: playerId.length > 0,
   });
 

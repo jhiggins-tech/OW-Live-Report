@@ -6,6 +6,7 @@ import { fetchPlayerWinRateTrend } from '../lib/queries/charts/player/winRateTre
 import { rankLabelFromOrdinal } from '../lib/normalize/rankOrdinal';
 import { computeTrajectory, type TrajectoryResult } from '../lib/trajectory';
 import type { SeriesPoint } from '../lib/trend';
+import { useSelectedSeason } from './useSelectedSeason';
 
 export interface UsePlayerTrajectory {
   trajectory: TrajectoryResult | null;
@@ -15,21 +16,22 @@ export interface UsePlayerTrajectory {
 
 export function usePlayerTrajectory(playerId: string | undefined, displayName: string): UsePlayerTrajectory {
   const enabled = !!playerId;
+  const { season } = useSelectedSeason();
   const results = useQueries({
     queries: [
       {
-        queryKey: ['player', 'rankTrend', playerId ?? ''],
-        queryFn: () => fetchPlayerRankTrend(playerId!),
+        queryKey: ['player', 'rankTrend', playerId ?? '', season],
+        queryFn: () => fetchPlayerRankTrend(playerId!, season),
         enabled,
       },
       {
-        queryKey: ['player', 'kdaTrend', playerId ?? ''],
-        queryFn: () => fetchPlayerKdaTrend(playerId!),
+        queryKey: ['player', 'kdaTrend', playerId ?? '', season],
+        queryFn: () => fetchPlayerKdaTrend(playerId!, season),
         enabled,
       },
       {
-        queryKey: ['player', 'winRateTrend', playerId ?? ''],
-        queryFn: () => fetchPlayerWinRateTrend(playerId!),
+        queryKey: ['player', 'winRateTrend', playerId ?? '', season],
+        queryFn: () => fetchPlayerWinRateTrend(playerId!, season),
         enabled,
       },
     ],

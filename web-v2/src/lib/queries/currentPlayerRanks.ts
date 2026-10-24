@@ -19,8 +19,8 @@ function normalizeRole(raw: string): Role | null {
   return (ROLES as readonly string[]).includes(role) ? (role as Role) : null;
 }
 
-export async function fetchCurrentPlayerRanks(playerId: string): Promise<CurrentPlayerRanks> {
-  const { rows } = await loadRankCurrent();
+export async function fetchCurrentPlayerRanks(playerId: string, season?: number): Promise<CurrentPlayerRanks> {
+  const { rows } = await loadRankCurrent(season);
   const byRole: CurrentPlayerRanks = {
     tank: null,
     damage: null,

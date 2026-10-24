@@ -1,6 +1,7 @@
 import { loadCareerDaily } from '../../../snapshotClient';
 import { safeNumber } from '../../../normalize/kda';
 import { playerIdSet } from '../../_shared';
+import { windowEnd } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 import type { RosterPlayer } from '../../../../types/models';
 
@@ -12,15 +13,18 @@ export interface TeamWinRatePoint {
   byPlayer: Record<string, number | null>;
 }
 
-export async function fetchTeamWinRateOverTime(players: RosterPlayer[]): Promise<TeamWinRatePoint[]> {
+export async function fetchTeamWinRateOverTime(
+  players: RosterPlayer[],
+  season?: number,
+): Promise<TeamWinRatePoint[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
-  const cutoff = Date.now() - TIME_WINDOWS.teamSeason;
+  const cutoff = (await windowEnd(season)) - TIME_WINDOWS.teamSeason;
   // See statCards.ts for why we read games_won/games_played at
   // hero='all-heroes' instead of win_percentage. The underlying series is
   // cumulative season-to-date counts sampled per snapshot; the daily rows
   // are the running WR snapshot at the end of each UTC day.
-  const { rows } = await loadCareerDaily();
+  const { rows } = await loadCareerDaily(season);
 
   // bucketed map: time -> playerId -> wp
   const perBucket = new Map<number, Map<string, number>>();

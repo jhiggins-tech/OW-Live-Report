@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchPlayerKdaTrend } from '../../lib/queries/charts/player/kdaTrend';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
 export default function PlayerKdaTrend({ playerId }: { playerId: string }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'kdaTrend', playerId],
-    queryFn: () => fetchPlayerKdaTrend(playerId),
+    queryKey: ['player', 'kdaTrend', playerId, season],
+    queryFn: () => fetchPlayerKdaTrend(playerId, season),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load KDA trend.</div>;

@@ -142,7 +142,31 @@ export async function loadMeta(): Promise<SnapshotMeta> {
   return meta;
 }
 
-export function loadRankCurrent(): Promise<SnapshotFile<RankRow>> {
+// rank-current carries every player's latest rank from any season. A past
+// season has no such file, so its rows are rebuilt from that season's
+// rank-daily: the last row per (player, role), i.e. the season's final ranks.
+export async function loadRankCurrent(season?: number): Promise<SnapshotFile<RankRow>> {
+  if (season !== undefined) {
+    const meta = await loadMeta();
+    if (meta.layoutVersion === 2 && season !== meta.currentSeason) {
+      const daily = await loadRankDaily(season);
+      const last = new Map<string, RankDailyRow>();
+      for (const r of daily.rows) {
+        const key = `${r.player}|${r.role}`;
+        const prev = last.get(key);
+        if (!prev || r.day > prev.day) last.set(key, r);
+      }
+      const rows = [...last.values()].map((r): RankRow => ({
+        player: r.player,
+        role: r.role,
+        time: r.day,
+        tier: r.tier,
+        division: r.division,
+        season: r.season,
+      }));
+      return { generatedAt: daily.generatedAt, rows };
+    }
+  }
   return fetchSnapshot('rank-current');
 }
 

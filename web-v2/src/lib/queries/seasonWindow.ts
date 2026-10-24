@@ -1,6 +1,7 @@
 import { loadMeta, loadRankCurrent, loadRankDaily } from '../snapshotClient';
 import type { RosterPlayer } from '../../types/models';
 import { playerIdSet } from './_shared';
+import { DAY_MS } from './charts/_constants';
 
 // Mirrors the old InfluxQL pair (max("season"), then first("season") at that
 // season) against the rank snapshots: the newest season any of the given
@@ -8,13 +9,17 @@ import { playerIdSet } from './_shared';
 // the daily table is the only history that survives raw retention.
 export async function fetchCurrentCompetitiveSeasonStart(
   players: RosterPlayer[] | readonly string[],
+  season?: number,
 ): Promise<number | null> {
   if (!players.length) return null;
-  // Season files only hold the current season, so the season starts at the
-  // first day on file. The rank-derived start below would cut off the days
-  // between a counter reset and the first new-season rank.
+  // Season files only hold one season, so it starts at the first day on
+  // file. The rank-derived start below would cut off the days between a
+  // counter reset and the first new-season rank.
   const meta = await loadMeta();
-  if (meta.layoutVersion === 2) return meta.seasonStart ?? null;
+  if (meta.layoutVersion === 2) {
+    if (season === undefined) return meta.seasonStart ?? null;
+    return meta.seasons?.find((s) => s.season === season)?.firstDay ?? null;
+  }
   const ids = playerIdSet(players);
   const [current, daily] = await Promise.all([loadRankCurrent(), loadRankDaily()]);
 
@@ -46,12 +51,23 @@ export async function fetchCurrentCompetitiveSeasonStart(
 export async function currentSeasonCutoff(
   players: RosterPlayer[] | readonly string[],
   fallbackWindowMs: number,
+  season?: number,
 ): Promise<number> {
   try {
-    const start = await fetchCurrentCompetitiveSeasonStart(players);
+    const start = await fetchCurrentCompetitiveSeasonStart(players, season);
     if (start !== null) return start;
   } catch {
     // Keep charts usable if the rank snapshots are temporarily unavailable.
   }
   return Date.now() - fallbackWindowMs;
+}
+
+// Right edge for the "last N days" chart windows: now for the current season
+// (and the legacy layout), the day after the last row on file for a past one,
+// so its charts show the whole season instead of an empty recent window.
+export async function windowEnd(season?: number): Promise<number> {
+  const meta = await loadMeta();
+  if (meta.layoutVersion !== 2 || season === undefined || season === meta.currentSeason) return Date.now();
+  const last = meta.seasons?.find((s) => s.season === season)?.lastDay;
+  return last === undefined ? Date.now() : last + DAY_MS;
 }

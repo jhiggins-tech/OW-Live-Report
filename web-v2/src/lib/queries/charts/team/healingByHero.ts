@@ -15,11 +15,14 @@ export interface HealingByHeroEntry {
 
 // Career healing-per-10-min for each player/hero pairing — one entry per
 // hero a roster player has logged time on. Sorted descending, top 15.
-export async function fetchTeamHealingByHero(players: RosterPlayer[]): Promise<HealingByHeroEntry[]> {
+export async function fetchTeamHealingByHero(
+  players: RosterPlayer[],
+  season?: number,
+): Promise<HealingByHeroEntry[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
   const displayById = new Map(players.map((p) => [p.playerId, p.display]));
-  const { rows } = await loadCareerLatest();
+  const { rows } = await loadCareerLatest(season);
 
   const entries: HealingByHeroEntry[] = [];
   for (const r of rows) {

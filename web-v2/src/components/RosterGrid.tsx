@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import SeasonLink from './SeasonLink';
 import type { RosterPlayer } from '../types/models';
 import type { TrajectoryResult } from '../lib/trajectory';
 import type { OverFastPlayerSummary } from '../lib/queries/overfastPlayerSummary';
@@ -53,7 +53,7 @@ export default function RosterGrid({
         const profile = profileByPlayerId?.[p.playerId];
         const supporting = supportingByPlayerId?.[p.playerId];
         return (
-          <Link
+          <SeasonLink
             key={p.slug}
             to={`/players/${p.slug}`}
             className="roster-card"
@@ -102,7 +102,7 @@ export default function RosterGrid({
                 <strong>{fmtCompact(supporting?.healingPer10Min)}</strong>
               </div>
             </div>
-          </Link>
+          </SeasonLink>
         );
       })}
     </div>

@@ -25,12 +25,12 @@ function normalizeRole(raw: string | undefined): Role | null {
   return (ROLES as readonly string[]).includes(lower) ? (lower as Role) : null;
 }
 
-export async function fetchTeamWideMatch(players: RosterPlayer[]): Promise<TeamWideMatch> {
+export async function fetchTeamWideMatch(players: RosterPlayer[], season?: number): Promise<TeamWideMatch> {
   if (!players.length) {
     return { assessment: assessWideGroup([]), perPlayer: [] };
   }
   const ids = playerIdSet(players);
-  const { rows } = await loadRankCurrent();
+  const { rows } = await loadRankCurrent(season);
 
   const byPlayer = new Map<string, Partial<Record<Role, number>>>();
   for (const r of rows) {
