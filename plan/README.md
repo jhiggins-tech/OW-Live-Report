@@ -10,6 +10,14 @@ in scope, what's out, and the open questions.
   scope, the V2.1 checklist (all shipped, with PR references), the V2.2
   backlog (pointing at the PRDs below), and the V1→V2 port map.
 
+## V3
+
+- **[v3-static-season-snapshots.md](./v3-static-season-snapshots.md)** —
+  *Proposed.* Retire the TimescaleDB backend: a twice-daily GitHub Action
+  polls OverFast directly and compacts each sample into per-season daily
+  roll-ups under `docs/data/seasons/<N>/`, so the site is fully static and
+  resets each season. Split into agent-sized work packages (WP0–WP7).
+
 ## V2.3
 
 - **[v2.3-influxql-to-sql-migration.md](./v2.3-influxql-to-sql-migration.md)**

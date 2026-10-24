@@ -1,0 +1,100 @@
+name: Poll OverFast stats
+
+# Twice daily: fetch every rostered player from the OverFast API, compact the
+# results into the current season's daily roll-ups under docs/data/, and
+# commit. Replaces the TimescaleDB backend and refresh-data.yml. See
+# plan/v3-static-season-snapshots.md.
+#
+# Scheduled runs only execute where the OW_POLL_ENABLED repository variable
+# is 'true' (the repo GitHub Pages serves), so forks never write data.
+
+on:
+  schedule:
+    # 09:37 + 21:37 UTC. Upstream changes land 11:00-20:00 UTC (see PRD);
+    # the off-the-hour minute dodges GitHub's top-of-hour queueing.
+    - cron: '37 9,21 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Poll and compact, upload the result as an artifact, but do not commit'
+        type: boolean
+        default: false
+      force_season:
+        description: 'Force the current season to this number (blank = auto-detect)'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    if: github.event_name == 'workflow_dispatch' || vars.OW_POLL_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Shared with deploy.yml: both push to main. Job-level so a scheduled run
+    # skipped by the `if` above never claims the group (and so can't displace
+    # a deploy waiting in it).
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The pipeline uses only Node built-ins (global fetch, node:fs), so
+      # there is no pnpm install here.
+      - name: Poll OverFast and compact into daily roll-ups
+        working-directory: web-v2
+        env:
+          FORCE_SEASON: ${{ inputs.force_season }}
+        run: node scripts/pipeline/poll.mjs --data-dir ../docs/data --raw-dir ../poll-raw
+
+      - name: Validate data tree
+        working-directory: web-v2
+        run: node scripts/pipeline/validate.mjs --data-dir ../docs/data
+
+      - name: Upload raw responses and resulting data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poll-${{ github.run_id }}
+          path: |
+            poll-raw/
+            docs/data/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Commit data back to main
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo 'No data changes to commit.'
+            exit 0
+          fi
+          git commit -m "data: poll $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+
+          # Retry push to ride out any concurrent push to main.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt). Fetching + rebasing."
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo 'Push failed after 5 attempts.'
+          exit 1

@@ -70,11 +70,13 @@ function HeroRow({ hero, heroMeta }: { hero: PlayerHeroStat; heroMeta: HeroMeta 
 function AssignmentCard({
   a,
   heroes,
+  dataSeason,
   profile,
   heroMeta,
 }: {
   a: LineupAssignment;
   heroes: PlayerHeroStat[];
+  dataSeason: number | null;
   profile: OverFastPlayerSummary | undefined;
   heroMeta: HeroMeta | undefined;
 }) {
@@ -103,6 +105,11 @@ function AssignmentCard({
               {a.role}
             </span>
             {a.locked ? <span className="lineup-card-locked">locked</span> : null}
+            {dataSeason !== null ? (
+              <span className="lineup-card-locked" title={`No current-season data yet; hero stats are from season ${dataSeason}`}>
+                S{dataSeason} data
+              </span>
+            ) : null}
           </div>
         </div>
         {competitive?.rankIcon ? (
@@ -158,6 +165,11 @@ export default function OptimizerPage() {
   const heroesByPlayerAndRole = useMemo(() => {
     const m = new Map<string, PlayerOptimizerData['heroesByRole']>();
     for (const d of query.data ?? []) m.set(d.player.playerId, d.heroesByRole);
+    return m;
+  }, [query.data]);
+  const dataSeasonByPlayer = useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const d of query.data ?? []) m.set(d.player.playerId, d.dataSeason);
     return m;
   }, [query.data]);
 
@@ -269,6 +281,7 @@ export default function OptimizerPage() {
                     key={a.player.slug}
                     a={a}
                     heroes={heroes}
+                    dataSeason={dataSeasonByPlayer.get(a.player.playerId) ?? null}
                     profile={profile}
                     heroMeta={heroMeta.data}
                   />
