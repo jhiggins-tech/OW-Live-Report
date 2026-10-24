@@ -192,13 +192,57 @@ button[aria-pressed='true'] {
   background: currentColor;
   box-shadow: 0 0 14px color-mix(in srgb, currentColor 70%, transparent);
 }
-.player-rank-value {
+.player-rank-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
+}
+.player-rank-value {
+  min-width: 0;
   overflow-wrap: anywhere;
   font-family: Bahnschrift, "Trebuchet MS", sans-serif;
   font-size: clamp(1.65rem, 3vw, 2.35rem);
   line-height: 1;
 }
+/* Official insignia, sized like the optimizer's .lineup-card-rank stack. */
+.rank-insignia {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.rank-insignia-badge { height: 32px; width: auto; display: block; }
+.rank-insignia-tier { height: 24px; width: auto; display: block; }
+/* Stand-in when an insignia URL is unknown or fails to load: a chip tinted by tier. */
+.rank-insignia-fallback {
+  --rank-tint: var(--muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  color: var(--rank-tint);
+  background: color-mix(in srgb, var(--rank-tint) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rank-tint) 55%, transparent);
+  border-radius: 12px;
+  font-family: Bahnschrift, "Trebuchet MS", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.rank-insignia-fallback.tier-bronze { --rank-tint: var(--rank-bronze); }
+.rank-insignia-fallback.tier-silver { --rank-tint: var(--rank-silver); }
+.rank-insignia-fallback.tier-gold { --rank-tint: var(--rank-gold); }
+.rank-insignia-fallback.tier-platinum { --rank-tint: var(--rank-platinum); }
+.rank-insignia-fallback.tier-diamond { --rank-tint: var(--rank-diamond); }
+.rank-insignia-fallback.tier-master { --rank-tint: var(--rank-master); }
+.rank-insignia-fallback.tier-grandmaster { --rank-tint: var(--rank-grandmaster); }
+.rank-insignia-fallback.tier-champion { --rank-tint: var(--rank-champion); }
 .player-rank-detail {
   margin-top: 10px;
   color: var(--muted);

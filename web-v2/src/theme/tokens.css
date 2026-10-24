@@ -18,4 +18,13 @@
   --role-tank: #59c2ff;
   --role-damage: #ff7f73;
   --role-support: #41d8b7;
+  /* Rank tiers: tint of the fallback badge on the player page's rank cards. */
+  --rank-bronze: #d08a5c;
+  --rank-silver: #b9c6d6;
+  --rank-gold: #f5c542;
+  --rank-platinum: #6fd9de;
+  --rank-diamond: #6aa9ff;
+  --rank-master: #7ddc86;
+  --rank-grandmaster: #ff7f93;
+  --rank-champion: #c58bff;
 }

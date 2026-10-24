@@ -33,6 +33,24 @@ export interface SnapshotMeta {
   };
 }
 
+// snapshots/rank-icons.json (optional; legacy deploys don't have it): the
+// official rank insignia, captured from OverFast because the URLs carry content
+// hashes and can't be derived. `divisions` is keyed by the tier NAME
+// ('gold': the badge) and `tiers` by the division NUMBER ('3': the overlay),
+// the same naming quirk as the rank rows below. `season` is the rank season
+// the URL was last seen with.
+export interface RankIconsFile {
+  generatedAt: number;
+  divisions: Record<string, { url: string; season: number }>;
+  tiers: Record<string, { url: string; season: number }>;
+}
+
+// What loadRankIcons() hands the UI: just the URLs, empty when unavailable.
+export interface RankIconMaps {
+  divisions: Record<string, string>;
+  tiers: Record<string, string>;
+}
+
 // competitive_rank, latest per (player, role). Field naming keeps the
 // source schema's counterintuitive labels: `tier` is the division NUMBER
 // (1..5) and `division` is the tier NAME (silver, gold, ...) — see

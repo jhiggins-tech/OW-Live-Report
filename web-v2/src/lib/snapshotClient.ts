@@ -10,6 +10,8 @@ import type {
   CareerLatestRow,
   ProfileRow,
   RankDailyRow,
+  RankIconMaps,
+  RankIconsFile,
   RankRow,
   SnapshotFile,
   SnapshotMeta,
@@ -201,4 +203,23 @@ export function loadCareerHeroDaily(season?: number): Promise<SnapshotFile<Caree
 
 export function loadProfiles(): Promise<SnapshotFile<ProfileRow>> {
   return fetchSnapshot('profiles');
+}
+
+// Insignia URLs by tier name and division number. The file is optional (older
+// deploys lack it, and a missing icon only costs the cosmetic badge), so a 404
+// or any other failure resolves to empty maps instead of an error.
+export async function loadRankIcons(): Promise<RankIconMaps> {
+  const maps: RankIconMaps = { divisions: {}, tiers: {} };
+  try {
+    const file = await fetchSnapshot<RankIconsFile>('rank-icons');
+    for (const kind of ['divisions', 'tiers'] as const) {
+      for (const [key, entry] of Object.entries(file?.[kind] ?? {})) {
+        // Only https image URLs are ever handed to an <img>.
+        if (typeof entry?.url === 'string' && entry.url.startsWith('https://')) maps[kind][key] = entry.url;
+      }
+    }
+  } catch {
+    // Keep the empty maps.
+  }
+  return maps;
 }

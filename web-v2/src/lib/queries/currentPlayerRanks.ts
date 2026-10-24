@@ -7,6 +7,10 @@ const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 export interface CurrentPlayerRank {
   ordinal: number;
   label: string;
+  // The row's raw values, for the insignia lookup: `division` is the tier NAME
+  // ('gold') and `tier` the division NUMBER (1-5).
+  division: string | null;
+  tier: number | null;
   season: number | null;
   updatedAt: number;
 }
@@ -41,6 +45,8 @@ export async function fetchCurrentPlayerRanks(playerId: string, season?: number)
     byRole[role] = {
       ordinal,
       label: rankLabelFromOrdinal(ordinal),
+      division: row.division,
+      tier: row.tier,
       season: row.season,
       updatedAt: row.time,
     };

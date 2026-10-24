@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchCurrentPlayerRanks } from '../lib/queries/currentPlayerRanks';
+import { loadRankIcons } from '../lib/snapshotClient';
 import type { Role } from '../types/models';
 import { useSelectedSeason } from '../hooks/useSelectedSeason';
+import RankInsignia from './RankInsignia';
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 
@@ -26,6 +28,10 @@ export default function PlayerCurrentRank({ playerId }: { playerId: string }) {
     queryFn: () => fetchCurrentPlayerRanks(playerId, season),
     enabled: playerId.length > 0,
   });
+  // The insignia are looked up by tier name and number, so the key has no
+  // season: past seasons' ranks get the same badges. Never rejects (an
+  // older deploy without the file just gets empty maps).
+  const icons = useQuery({ queryKey: ['snapshot', 'rankIcons'], queryFn: loadRankIcons });
 
   return (
     <section className="panel player-ranks">
@@ -34,7 +40,7 @@ export default function PlayerCurrentRank({ playerId }: { playerId: string }) {
         <p>Latest recorded rank for each role</p>
       </header>
 
-      {query.isLoading ? (
+      {query.isLoading || icons.isLoading ? (
         <div className="player-rank-grid" aria-label="Loading competitive ranks">
           {ROLES.map((role) => (
             <div className="player-rank-card skeleton" key={role} />
@@ -65,7 +71,12 @@ export default function PlayerCurrentRank({ playerId }: { playerId: string }) {
                   <span className="player-rank-role-dot" aria-hidden="true" />
                   {ROLE_LABEL[role]}
                 </div>
-                <div className="player-rank-value">{rank?.label ?? 'Unranked'}</div>
+                <div className="player-rank-main">
+                  <div className="player-rank-value">{rank?.label ?? 'Unranked'}</div>
+                  {rank ? (
+                    <RankInsignia division={rank.division} tier={rank.tier} label={rank.label} icons={icons.data} />
+                  ) : null}
+                </div>
                 <div className="player-rank-detail">{detail}</div>
               </article>
             );
