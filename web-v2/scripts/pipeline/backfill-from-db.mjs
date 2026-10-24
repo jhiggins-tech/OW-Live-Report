@@ -30,6 +30,7 @@ import { GAMEMODE, PLATFORM, ROLES } from './constants.mjs';
 import { buildMeta } from './meta.mjs';
 import { legacySamplesByDay, loadLegacySnapshots, replayDays } from './replay.mjs';
 import { loadRoster } from './roster.mjs';
+import { isCounterReset } from './season.mjs';
 import { emptyStore, saveStore, seasonCounts, seasonRows } from './store.mjs';
 import { DAY_MS, isoDay, toNumber, utcDay } from './util.mjs';
 
@@ -239,6 +240,64 @@ export function historyToSamples(history) {
   return out;
 }
 
+// --- reset-day cleanup (both sources) --------------------------------------------
+
+// A hero row from the first day of a season belongs to that season only if
+// the hero was played after the reset: its counters went back down, or it is
+// new to the player.
+function isPostResetHero(prevHero, hero) {
+  if (!prevHero) return true;
+  const lower = (a, b) => a != null && b != null && a < b;
+  return lower(hero.gamesPlayed, prevHero.gamesPlayed) || lower(hero.timePlayed, prevHero.timePlayed);
+}
+
+// The daily table keeps each series' last sample of the day, so on the day a
+// season resets, every hero the player didn't touch after the reset only has
+// its pre-reset sample: verbatim last-season totals sitting next to the new
+// season's. Replayed as they are, they'd be filed under the new season and
+// stay in its career-latest for good. (Live polling never sees this: one API
+// response is coherent.) On a day where the player's all-heroes counters reset
+// versus their previous sample, this keeps all-heroes and only the heroes that
+// are new or whose gamesPlayed or timePlayed is strictly lower than in that
+// previous (unfiltered) sample, and drops the rest as pre-reset leftovers.
+// With recomputeAllHeroesTime (snapshots mode, where all-heroes timePlayed is
+// the per-hero sum) the sum is redone over the kept heroes; the DB has a real
+// all-heroes time, so DB mode leaves it. Mutates the samples (their `career`
+// is replaced, never edited, so the previous sample stays unfiltered) and
+// returns [{ day, player, dropped: [hero], kept: n }] for the reset days that
+// lost rows.
+export function dropLaggingHeroRows(samplesByDay, { recomputeAllHeroesTime = false } = {}) {
+  const previous = new Map(); // player -> career of their previous sample, unfiltered
+  const resets = [];
+  for (const [day, samples] of samplesByDay) {
+    for (const s of samples) {
+      const unfiltered = s.career;
+      const prev = previous.get(s.player);
+      if (unfiltered && prev && isCounterReset(prev['all-heroes'], unfiltered['all-heroes'])) {
+        const kept = {};
+        const dropped = [];
+        for (const [hero, c] of Object.entries(unfiltered)) {
+          if (hero === 'all-heroes' || isPostResetHero(prev[hero], c)) kept[hero] = c;
+          else dropped.push(hero);
+        }
+        if (dropped.length) {
+          if (recomputeAllHeroesTime) {
+            const heroes = Object.entries(kept).filter(([hero]) => hero !== 'all-heroes');
+            kept['all-heroes'] = {
+              ...kept['all-heroes'],
+              timePlayed: heroes.length ? heroes.reduce((sum, [, c]) => sum + (c.timePlayed ?? 0), 0) : null,
+            };
+          }
+          s.career = kept;
+          resets.push({ day, player: s.player, dropped, kept: Object.keys(kept).length - 1 });
+        }
+      }
+      if (unfiltered) previous.set(s.player, unfiltered);
+    }
+  }
+  return resets;
+}
+
 // --- DB source: latest-per-series readers (copied from fetch-snapshots.mjs) ---------
 
 // Latest (value, value_text, time) per grouping key, raw table first with a
@@ -377,7 +436,10 @@ async function readDatabase(pgClientFactory, players, { now, log }) {
     }
     const profiles = await fetchProfiles(client, players);
     const latestGamesPlayed = await fetchLatestGamesPlayed(client, players);
-    return { samplesByDay: historyToSamples(history), profiles, latestGamesPlayed };
+    const samplesByDay = historyToSamples(history);
+    // The DB has a real all-heroes timePlayed, so only the hero rows are cleaned.
+    const lagging = dropLaggingHeroRows(samplesByDay);
+    return { samplesByDay, profiles, latestGamesPlayed, lagging };
   } finally {
     await client.end();
   }
@@ -427,8 +489,11 @@ function readSnapshots(dir, playerIds, { log }) {
     careerDaily: keep(legacy.careerDaily),
     careerHeroDaily: keep(legacy.careerHeroDaily),
   });
+  // Before the overlay, so a dropped hero row can't be given healing fields.
+  // All-heroes timePlayed is the per-hero sum here, so it is redone too.
+  const lagging = dropLaggingHeroRows(samplesByDay, { recomputeAllHeroesTime: true });
   overlayLatestFields(samplesByDay, keep(legacy.careerLatest));
-  return { samplesByDay, profiles: keep(legacy.profiles).map((p) => ({ ...p })), latestGamesPlayed: null };
+  return { samplesByDay, profiles: keep(legacy.profiles).map((p) => ({ ...p })), latestGamesPlayed: null, lagging };
 }
 
 // --- output -------------------------------------------------------------------
@@ -476,7 +541,7 @@ export async function runBackfill(argv, { pgClientFactory = defaultPgClientFacto
   const input = args.fromSnapshots
     ? readSnapshots(args.fromSnapshots, new Set(players), { log })
     : await readDatabase(pgClientFactory, players, { now, log });
-  const { samplesByDay, profiles, latestGamesPlayed } = input;
+  const { samplesByDay, profiles, latestGamesPlayed, lagging } = input;
   if (!samplesByDay.length) throw new Error(`no history found in the ${source} source; nothing to backfill`);
 
   // Replay day by day, noting every season change.
@@ -560,6 +625,12 @@ export async function runBackfill(argv, { pgClientFactory = defaultPgClientFacto
     if (e.reason !== 'global') log(`  ${e.day}  ${e.player} season ${e.from} -> ${e.to} (${e.reason})`);
     else log(e.from === null ? `  ${e.day}  global season starts at ${e.to}` : `  ${e.day}  global season ${e.from} -> ${e.to}`);
   }
+  if (lagging.length) {
+    log('\nPre-reset hero rows dropped (the daily table kept their last-season totals on the reset day)');
+    for (const l of lagging) {
+      log(`  ${isoDay(l.day)}  ${l.player}: dropped ${l.dropped.length}, kept ${l.kept} per-hero row(s)`);
+    }
+  }
   log('\nSeason summary');
   for (const line of formatTable(
     ['season', 'firstDay', 'lastDay', 'players', 'rank-daily', 'career-daily', 'career-hero-daily', 'career-latest'],
@@ -581,7 +652,7 @@ export async function runBackfill(argv, { pgClientFactory = defaultPgClientFacto
   for (const w of warnings) log(`::warning::${w}`);
   log(`\nbackfill: wrote ${written.written.length} file(s) to ${args.dataDir}`);
 
-  return { source, store, meta, seasons, finalSeasons, events, warnings, mismatches, written };
+  return { source, store, meta, seasons, finalSeasons, events, lagging, warnings, mismatches, written };
 }
 
 async function main() {
