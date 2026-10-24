@@ -1,4 +1,4 @@
-{"season":25,"generatedAt":1792843200000,"rows":[
+{"season":25,"generatedAt":1792818817500,"rows":[
 {"player":"DarthKcaj-1443","role":"damage","day":1791417600000,"tier":2,"division":"gold","season":25},
 {"player":"DarthKcaj-1443","role":"support","day":1791417600000,"tier":3,"division":"gold","season":25},
 {"player":"DarthKcaj-1443","role":"tank","day":1791417600000,"tier":3,"division":"silver","season":25},
@@ -47,7 +47,7 @@
 {"player":"DarthKcaj-1443","role":"damage","day":1792713600000,"tier":1,"division":"gold","season":25},
 {"player":"DarthKcaj-1443","role":"support","day":1792713600000,"tier":4,"division":"gold","season":25},
 {"player":"DarthKcaj-1443","role":"tank","day":1792713600000,"tier":2,"division":"silver","season":25},
-{"player":"DarthKcaj-1443","role":"damage","day":1792800000000,"tier":1,"division":"gold","season":25},
-{"player":"DarthKcaj-1443","role":"support","day":1792800000000,"tier":4,"division":"gold","season":25},
-{"player":"DarthKcaj-1443","role":"tank","day":1792800000000,"tier":2,"division":"silver","season":25}
+{"player":"DarthKcaj-1443","role":"damage","day":1792800000000,"tier":5,"division":"platinum","season":25},
+{"player":"DarthKcaj-1443","role":"support","day":1792800000000,"tier":3,"division":"gold","season":25},
+{"player":"DarthKcaj-1443","role":"tank","day":1792800000000,"tier":3,"division":"silver","season":25}
 ]}

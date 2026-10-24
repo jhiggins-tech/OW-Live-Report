@@ -1,7 +1,7 @@
-{"generatedAt":1792843200000,"rows":[
-{"player":"DarthKcaj-1443","role":"damage","time":1792843200000,"tier":1,"division":"gold","season":25},
-{"player":"DarthKcaj-1443","role":"support","time":1792843200000,"tier":4,"division":"gold","season":25},
-{"player":"DarthKcaj-1443","role":"tank","time":1792843200000,"tier":2,"division":"silver","season":25},
+{"generatedAt":1792818817500,"rows":[
+{"player":"DarthKcaj-1443","role":"damage","time":1792843200000,"tier":5,"division":"platinum","season":25},
+{"player":"DarthKcaj-1443","role":"support","time":1792843200000,"tier":3,"division":"gold","season":25},
+{"player":"DarthKcaj-1443","role":"tank","time":1792843200000,"tier":3,"division":"silver","season":25},
 {"player":"Kiddo-11482","role":"damage","time":1792843200000,"tier":2,"division":"bronze","season":22},
 {"player":"Kieness-6123","role":"damage","time":1792843200000,"tier":3,"division":"gold","season":24},
 {"player":"Kieness-6123","role":"support","time":1786968000000,"tier":1,"division":"bronze","season":23},

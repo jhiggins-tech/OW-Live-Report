@@ -1,7 +1,7 @@
 {
   "layoutVersion": 2,
-  "generatedAt": 1792818644040,
-  "heartbeatAt": 1792818644040,
+  "generatedAt": 1792818817500,
+  "heartbeatAt": 1792818817500,
   "gamemode": "competitive",
   "platform": "pc",
   "players": [
@@ -56,8 +56,8 @@
     }
   ],
   "lastPoll": {
-    "at": 1792818644040,
-    "source": "backfill",
+    "at": 1792818817500,
+    "source": "poll",
     "ok": [
       "Kieness-6123",
       "DarthKcaj-1443",
