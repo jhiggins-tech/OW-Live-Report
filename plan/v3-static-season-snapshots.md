@@ -648,16 +648,17 @@ on:
 permissions:
   contents: write
 
-# Shared with deploy.yml: both push to main.
-concurrency:
-  group: deploy
-  cancel-in-progress: false
-
 jobs:
   poll:
     if: github.event_name == 'workflow_dispatch' || vars.OW_POLL_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Shared with deploy.yml: both push to main. Job-level so a scheduled run
+    # skipped by the `if` above never claims the group (and so can't displace
+    # a deploy waiting in it).
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
