@@ -780,7 +780,10 @@ jobs:
         working-directory: web-v2
         run: node scripts/pipeline/validate.mjs --data-dir ../docs/data
       - uses: actions/upload-artifact@v4
-        with: { name: backfill-${{ github.run_id }}, path: docs/data/, retention-days: 30 }
+        with:
+          name: backfill-${{ github.run_id }}
+          path: docs/data/
+          retention-days: 30
       - name: Commit
         if: ${{ !inputs.dry_run }}
         run: |
@@ -1093,6 +1096,13 @@ Acceptance: `pnpm test:pipeline` green on Node 20 and 22; no dependency changes;
   from the latest-profile query, run
   `buildMeta(… lastPoll: { source: 'backfill', ok: players, failed: [] })`
   and `saveStore`.
+- **Drop lagging per-hero rows on reset days** (found during WP3). The DB's
+  daily table keeps each hero series' last sample of the day. On the day a
+  player's counters reset, heroes they haven't played since the reset still
+  carry last season's totals. On a reset day (`isCounterReset` against the
+  previous day), keep a hero only if it's new or its `gamesPlayed`/`timePlayed`
+  fell. Otherwise those rows leak into the new season's `career-latest.json`
+  for good. Live polling isn't affected: one API response is self-consistent.
 - **Read every input before writing anything.** `--from-snapshots` reads the
   same directory it writes `meta/rank-current/profiles` into. Leave the
   legacy flat files untouched.
