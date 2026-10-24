@@ -1,14 +1,36 @@
 # OW Live Report
 
 Static React + TypeScript site that renders live competitive Overwatch
-analytics for a tracked roster. An hourly CI pipeline queries the
-TimescaleDB stats backend over SQL and bakes JSON snapshot datasets into
-`docs/data/snapshots/`; the browser fetches those static files at view
-time. (The backend's old InfluxQL HTTP endpoint is gone, and browsers
-can't speak the Postgres wire protocol, so there is no browser-direct
-database access anymore.)
+analytics for a tracked roster. A GitHub Action polls the OverFast API
+twice a day and compacts each sample into one row per series per UTC day,
+split by competitive season, under `docs/data/`; the browser fetches those
+static JSON files at view time. There is no database or server: the repo
+is the datastore.
 
 Hosted via GitHub Pages from `main /docs`.
+
+## Data
+
+```text
+docs/data/
+  snapshots/        global "now" files, rewritten on every poll
+    meta.json         layoutVersion, currentSeason, season index, last poll
+    rank-current.json latest rank per player and role, carried across seasons
+    profiles.json     latest profile per player
+  seasons/<N>/      per-season daily roll-ups (frozen once the season ends)
+    rank-daily.json  career-daily.json  career-hero-daily.json  career-latest.json
+  pipeline/state.json   the poller's memory (not read by the site)
+```
+
+The site reads `meta.json` first. With `layoutVersion: 2` every chart, stat
+card, hero pool and leaderboard reads only the current season's files, so
+stats reset when a new season starts and past seasons stay behind as static
+files. The one exception is the team optimizer: a player with no data in the
+current season is rated from a snapshot of their last season, labelled with
+that season on their card. Without `layoutVersion: 2` the site reads the
+older flat `snapshots/*.json` files instead. See
+[`plan/v3-static-season-snapshots.md`](./plan/v3-static-season-snapshots.md)
+for the full data contract.
 
 ## Stack
 
@@ -44,22 +66,20 @@ Keys:
 - `TEAM_NAME`, `TEAM_SUBTITLE`
 - `TOP_HERO_COUNT`
 
-The stats-backend connection (`STATS_DB_URL`, `STATS_GAMEMODE`) is a
-CI/build-time concern of `scripts/fetch-snapshots.mjs`, not part of the
-runtime config the SPA fetches.
+Polling is a CI concern, not part of the runtime config the SPA fetches:
+it only runs where the repository variable `OW_POLL_ENABLED` is `true`.
 
 ## Local dev
 
 ```bash
 cd web-v2
 pnpm install
-pnpm fetch:snapshots   # bake data snapshots from the stats backend
-pnpm dev               # http://localhost:5173/
+pnpm dev               # http://localhost:5173/OW-Live-Report/
 ```
 
-`fetch:snapshots` needs outbound access to
-`owstats.jhiggins.tech:5432`; without it the site renders empty with a
-stale-data banner.
+No database or API access is needed: the dev server serves the committed
+`docs/data/{snapshots,seasons}/` files directly, so you see the same data
+as the live site. Pull `main` to refresh it.
 
 Production preview:
 
@@ -79,15 +99,18 @@ pnpm typecheck
 `.github/workflows/deploy.yml` runs on every push to `main`:
 
 1. Build the roster manifest from `config/tracked-battletags.txt`.
-2. Refresh the data snapshots (seeded from the previous deploy if the
-   stats backend is unreachable).
-3. Build the SPA into `docs/`.
-4. Commit-back `docs/` to `main` with `[skip ci]`.
+2. Build the SPA into `docs/` (the build leaves `docs/data/snapshots`,
+   `docs/data/seasons` and `docs/data/pipeline` alone).
+3. Commit-back `docs/` to `main` with `[skip ci]`.
 
-`.github/workflows/refresh-data.yml` additionally re-bakes
-`docs/data/snapshots/` hourly (matching the scraper's cadence) and
-commits with `[skip ci]` — no site rebuild needed, the SPA fetches the
-JSON at view time.
+`.github/workflows/poll-stats.yml` updates the data twice a day (09:37
+and 21:37 UTC): it polls the OverFast API for every rostered player,
+compacts the results into the current season's daily roll-ups, validates
+the tree, and commits `docs/data` with `[skip ci]` — no site rebuild
+needed, the SPA fetches the JSON at view time. Scheduled runs only
+execute where the `OW_POLL_ENABLED` repository variable is `true`, so
+forks never write data; use "Run workflow" to dry-run or poll on demand.
+It replaces the old hourly `refresh-data.yml` and the TimescaleDB backend.
 
 GitHub Pages serves the resulting `docs/` tree. No manual steps.
 
