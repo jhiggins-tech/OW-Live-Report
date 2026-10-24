@@ -1,0 +1,88 @@
+name: Backfill season history (one-shot)
+
+# One-shot migration, run by hand from the Actions tab before the TimescaleDB
+# backend is retired: replays its full daily history (or, offline, the legacy
+# docs/data/snapshots files) through the season pipeline into
+# docs/data/seasons/<N>/ and docs/data/pipeline/state.json. Replaces any
+# existing seasons/ and pipeline/state.json. Defaults to a dry run that only
+# uploads the result as an artifact. Deleted in WP6. See
+# plan/v3-static-season-snapshots.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'db = TimescaleDB daily table (full history); snapshots = legacy docs/data/snapshots files (~120 days)'
+        type: choice
+        options: [db, snapshots]
+        default: db
+      dry_run:
+        description: 'Upload the result as an artifact, but do not commit'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+# Shared with deploy.yml: both push to main.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm, cache-dependency-path: web-v2/pnpm-lock.yaml }
+      - name: Install dependencies (pg)
+        working-directory: web-v2
+        run: pnpm install --frozen-lockfile
+      - name: Replay history into seasons/
+        working-directory: web-v2
+        env:
+          # Read-only, intentionally public credentials; override via repo
+          # Settings -> Variables -> Actions if the backend moves.
+          STATS_DB_URL: ${{ vars.STATS_DB_URL || 'postgresql://readonly:owstats-readonly@owstats.jhiggins.tech:5432/ow_stats?sslmode=require' }}
+        run: >
+          node scripts/pipeline/backfill-from-db.mjs --data-dir ../docs/data --force
+          ${{ inputs.source == 'snapshots' && '--from-snapshots ../docs/data/snapshots' || '' }}
+      - name: Validate data tree
+        working-directory: web-v2
+        run: node scripts/pipeline/validate.mjs --data-dir ../docs/data
+      - name: Upload resulting data
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-${{ github.run_id }}
+          path: docs/data/
+          retention-days: 30
+      - name: Commit
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo 'No data changes to commit.'
+            exit 0
+          fi
+          git commit -m "data: backfill season history from ${{ inputs.source }} [skip ci]"
+
+          # Retry push to ride out any concurrent push to main.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt). Fetching + rebasing."
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo 'Push failed after 5 attempts.'
+          exit 1
