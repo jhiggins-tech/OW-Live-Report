@@ -16,13 +16,17 @@ export function isCounterReset(prev, cur) {
   return dropped('gamesPlayed') && (dropped('timePlayed') || dropped('eliminations'));
 }
 
-// True when any headline counter differs from the previous sample (or there is
-// no previous sample). Used to spot a carry-over player who has resumed play.
+// True when the player has played since the previous sample (or there is no
+// previous sample). Used to spot a carry-over player who has resumed play.
+// Only the whole-number games counter is trusted: time played can differ by a
+// second or two between sources (Blizzard's rounding, per-hero sums in
+// replays), and that jitter must not drag an inactive player into the
+// current season.
 export function countersChanged(prev, cur) {
   if (!cur) return false;
   if (!prev) return true;
-  return ['gamesPlayed', 'timePlayed', 'eliminations', 'deaths', 'assists']
-    .some((k) => (cur[k] ?? null) !== (prev[k] ?? null));
+  const b = cur.gamesPlayed ?? null;
+  return b !== null && b !== (prev.gamesPlayed ?? null);
 }
 
 // The player's last stored all-heroes row, from the season bucket the state

@@ -266,11 +266,25 @@ test('S12: the outcome does not depend on the order of the samples in a poll', (
   assert.deepEqual(run((s) => s), run((s) => [...s].reverse()));
 });
 
-test('S13: countersChanged compares the five headline counters', () => {
+test('S13: countersChanged only trusts games played', () => {
   const prev = careerOf();
   assert.equal(countersChanged(prev, careerOf()), false);
-  assert.equal(countersChanged(prev, careerOf({ deaths: 81 })), true);
-  assert.equal(countersChanged(prev, careerOf({ healingDone: 5 })), false, 'healing is not a headline counter');
+  assert.equal(countersChanged(prev, careerOf({ gamesPlayed: (prev.gamesPlayed ?? 0) + 1 })), true);
+  assert.equal(countersChanged(prev, careerOf({ deaths: 81 })), false, 'other counters alone are not play');
+  assert.equal(countersChanged(prev, careerOf({ timePlayed: (prev.timePlayed ?? 0) + 2 })), false, 'time jitter is not play');
+  assert.equal(countersChanged(prev, careerOf({ gamesPlayed: null })), false);
   assert.equal(countersChanged(null, careerOf()), true);
   assert.equal(countersChanged(prev, null), false);
+});
+
+test('S14: time-played jitter after the grace window keeps an inactive player in their season', () => {
+  // Regression: the first poll after a backfill saw all-heroes timePlayed off
+  // by 1-2 s (per-hero sums vs the real total) and moved Kiddo from S22 into
+  // the current season as post-grace-change.
+  const idle = { gamesPlayed: 3, timePlayed: 900, eliminations: 20, deaths: 15, assists: 4 };
+  const store = rolledOver(idle);
+  const d1 = ROLLOVER + 3 * DAY;
+  const r = ingestPoll(store, [makeSample(TONES, d1, { rankSeason: 23, career: { ...idle, timePlayed: 902 } })], { now: d1 });
+  assert.deepEqual(r.assignments, [{ player: TONES, season: 23, reason: 'unchanged' }]);
+  assert.equal(seasonRows(store, 24, 'careerDaily').filter((x) => x.player === TONES).length, 0);
 });

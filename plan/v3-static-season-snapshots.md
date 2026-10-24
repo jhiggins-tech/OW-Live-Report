@@ -435,11 +435,11 @@ function isCounterReset(prev, cur) {        // both are all-heroes career object
   return dropped('gamesPlayed') && (dropped('timePlayed') || dropped('eliminations'));
 }
 
-function countersChanged(prev, cur) {
-  if (!cur) return false;
-  if (!prev) return true;
-  return ['gamesPlayed', 'timePlayed', 'eliminations', 'deaths', 'assists']
-    .some((k) => (cur[k] ?? null) !== (prev[k] ?? null));
+function countersChanged(prev, cur) {      // "has played since": games played only.
+  if (!cur) return false;                   // Time played jitters by a second or two between
+  if (!prev) return true;                   // sources and must not move an idle player (found
+  const b = cur.gamesPlayed ?? null;        // in the end-to-end check after WP3).
+  return b !== null && b !== (prev.gamesPlayed ?? null);
 }
 
 export function ingestPoll(store, samples, { now, graceMs = GRACE_MS, minSeasonMs = MIN_SEASON_MS, forceSeason = null }) {
