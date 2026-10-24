@@ -93,7 +93,7 @@ export default function OverviewPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Team hero pool</h2>
-          <p>Top heroes by current-season team playtime</p>
+          <p>Top heroes by team playtime this season</p>
         </header>
         <HeroPoolBar players={visible} />
       </section>

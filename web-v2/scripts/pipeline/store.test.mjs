@@ -1,7 +1,7 @@
 // Tests W1-W2 (+ W3/W4): the deterministic file writer and loadStore.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { SEASON_DATASETS } from './constants.mjs';
@@ -173,8 +173,13 @@ test('W4: loadStore ignores the legacy flat snapshot files', () => {
   const store = loadStore(dir);
   assert.equal(store.seasons.size, 0);
 
-  // The committed legacy tree: rank-current and profiles load, nothing else.
-  const legacy = loadStore(join(LEGACY_SNAPSHOTS_DIR, '..'));
+  // The committed snapshots/ dir (legacy flat files alongside the global
+  // ones), copied out so seasons/ and pipeline/ committed next to it since
+  // the cutover don't leak in: rank-current and profiles load, nothing else.
+  if (!existsSync(LEGACY_SNAPSHOTS_DIR)) return;
+  const copy = tmpDir();
+  cpSync(LEGACY_SNAPSHOTS_DIR, join(copy, 'snapshots'), { recursive: true });
+  const legacy = loadStore(copy);
   assert.equal(legacy.seasons.size, 0);
   assert.equal(legacy.profiles.size, 7);
   assert.ok(legacy.rankCurrent.size > 0);

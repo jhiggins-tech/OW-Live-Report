@@ -136,7 +136,7 @@ export default function PlayerPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Role breakdown</h2>
-          <p>Aggregated from current-season per-hero stats via hero→role catalog</p>
+          <p>Aggregated from the season's per-hero stats via hero→role catalog</p>
         </header>
         <RoleBreakdown playerId={player.playerId} />
       </section>
@@ -144,7 +144,7 @@ export default function PlayerPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Hero usage</h2>
-          <p>Weekly current-season playtime snapshots, top heroes</p>
+          <p>Weekly playtime snapshots this season, top heroes</p>
         </header>
         <HeroUsageStacked playerId={player.playerId} hiddenHeroes={hidden} />
       </section>
@@ -152,7 +152,7 @@ export default function PlayerPage() {
       <section className="panel">
         <header className="section-head">
           <h2>Hero performance</h2>
-          <p>Weekly current-season KDA snapshots</p>
+          <p>Weekly KDA snapshots this season</p>
         </header>
         <HeroPerfLines playerId={player.playerId} hiddenHeroes={hidden} />
       </section>
