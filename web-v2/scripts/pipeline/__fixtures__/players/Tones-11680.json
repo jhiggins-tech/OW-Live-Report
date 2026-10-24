@@ -1,0 +1,562 @@
+{
+  "summary": {
+    "username": "Tones",
+    "avatar": "https://d15f34w2p8l1cc.cloudfront.net/overwatch/d4bf8c217e44fe820b2b45e0c863dff8a8f68a8e190934841170c84f6165f482.png",
+    "namecard": "https://d15f34w2p8l1cc.cloudfront.net/overwatch/2b23900a2f28943af5bf505f433cd96e8e5f6cc9da177a238d3608bdf527fb42.png",
+    "title": "Cabbage Merchant",
+    "endorsement": {
+      "level": 5,
+      "frame": "https://static.playoverwatch.com/images/pages/career/icons/endorsement/5.47a76a6a547ef91d729ae62c21aa0d0ba5487aed.svg#icon"
+    },
+    "competitive": {
+      "pc": {
+        "season": 24,
+        "tank": null,
+        "damage": {
+          "division": "gold",
+          "tier": 3,
+          "role_icon": "https://static.example.invalid/overwatch/roles/damage.svg",
+          "rank_icon": "https://static.example.invalid/overwatch/ranks/gold.png",
+          "tier_icon": "https://static.example.invalid/overwatch/tiers/3.png"
+        },
+        "support": null,
+        "open": null
+      },
+      "console": null
+    },
+    "last_updated_at": 1792801696
+  },
+  "stats": {
+    "pc": {
+      "competitive": {
+        "heroes_comparisons": {
+          "time_played": {
+            "label": "Time Played",
+            "values": [
+              {
+                "hero": "mei",
+                "value": 1962
+              },
+              {
+                "hero": "moira",
+                "value": 7188
+              },
+              {
+                "hero": "reaper",
+                "value": 6183
+              },
+              {
+                "hero": "reinhardt",
+                "value": 2180
+              },
+              {
+                "hero": "soldier-76",
+                "value": 10539
+              },
+              {
+                "hero": "sombra",
+                "value": 2241
+              }
+            ]
+          }
+        },
+        "career_stats": {
+          "all-heroes": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 76
+                },
+                {
+                  "key": "healing_done",
+                  "label": "Healing Done",
+                  "value": 45707
+                }
+              ]
+            },
+            {
+              "category": "average",
+              "label": "Average",
+              "stats": [
+                {
+                  "key": "healing_done_avg_per_10_min",
+                  "label": "Healing Done - Avg per 10 Min",
+                  "value": 1111
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 753
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 318
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 24684
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 33
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 19
+                }
+              ]
+            }
+          ],
+          "mei": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 21
+                },
+                {
+                  "key": "healing_done",
+                  "label": "Healing Done",
+                  "value": 4752
+                }
+              ]
+            },
+            {
+              "category": "average",
+              "label": "Average",
+              "stats": [
+                {
+                  "key": "healing_done_avg_per_10_min",
+                  "label": "Healing Done - Avg per 10 Min",
+                  "value": 1453
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 46
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 27
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 1962
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 2
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 1
+                },
+                {
+                  "key": "win_percentage",
+                  "label": "Win Percentage",
+                  "value": 66
+                }
+              ]
+            }
+          ],
+          "moira": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 125
+                },
+                {
+                  "key": "healing_done",
+                  "label": "Healing Done",
+                  "value": 93977
+                }
+              ]
+            },
+            {
+              "category": "average",
+              "label": "Average",
+              "stats": [
+                {
+                  "key": "healing_done_avg_per_10_min",
+                  "label": "Healing Done - Avg per 10 Min",
+                  "value": 7844
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 193
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 84
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 7188
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 11
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 5
+                },
+                {
+                  "key": "win_percentage",
+                  "label": "Win Percentage",
+                  "value": 51
+                }
+              ]
+            }
+          ],
+          "reaper": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 4
+                },
+                {
+                  "key": "healing_done",
+                  "label": "Healing Done",
+                  "value": 16101
+                }
+              ]
+            },
+            {
+              "category": "average",
+              "label": "Average",
+              "stats": [
+                {
+                  "key": "healing_done_avg_per_10_min",
+                  "label": "Healing Done - Avg per 10 Min",
+                  "value": 1562
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 198
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 80
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 6183
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 8
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 4
+                },
+                {
+                  "key": "win_percentage",
+                  "label": "Win Percentage",
+                  "value": 58
+                }
+              ]
+            }
+          ],
+          "reinhardt": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 4
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 68
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 23
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 2180
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 3
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 1
+                },
+                {
+                  "key": "win_percentage",
+                  "label": "Win Percentage",
+                  "value": 36
+                }
+              ]
+            }
+          ],
+          "soldier-76": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 16
+                },
+                {
+                  "key": "healing_done",
+                  "label": "Healing Done",
+                  "value": 18902
+                }
+              ]
+            },
+            {
+              "category": "average",
+              "label": "Average",
+              "stats": [
+                {
+                  "key": "healing_done_avg_per_10_min",
+                  "label": "Healing Done - Avg per 10 Min",
+                  "value": 1076
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 341
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 138
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 10539
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 15
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 9
+                },
+                {
+                  "key": "win_percentage",
+                  "label": "Win Percentage",
+                  "value": 62
+                }
+              ]
+            }
+          ],
+          "sombra": [
+            {
+              "category": "assists",
+              "label": "Assists",
+              "stats": [
+                {
+                  "key": "assists",
+                  "label": "Assists",
+                  "value": 22
+                },
+                {
+                  "key": "healing_done",
+                  "label": "Healing Done",
+                  "value": 3215
+                }
+              ]
+            },
+            {
+              "category": "average",
+              "label": "Average",
+              "stats": [
+                {
+                  "key": "healing_done_avg_per_10_min",
+                  "label": "Healing Done - Avg per 10 Min",
+                  "value": 861
+                }
+              ]
+            },
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 78
+                },
+                {
+                  "key": "deaths",
+                  "label": "Deaths",
+                  "value": 30
+                }
+              ]
+            },
+            {
+              "category": "game",
+              "label": "Game",
+              "stats": [
+                {
+                  "key": "time_played",
+                  "label": "Time Played",
+                  "value": 2241
+                },
+                {
+                  "key": "games_played",
+                  "label": "Games Played",
+                  "value": 3
+                },
+                {
+                  "key": "games_won",
+                  "label": "Games Won",
+                  "value": 1
+                },
+                {
+                  "key": "win_percentage",
+                  "label": "Win Percentage",
+                  "value": 44
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "quickplay": {
+        "career_stats": {
+          "all-heroes": [
+            {
+              "category": "combat",
+              "label": "Combat",
+              "stats": [
+                {
+                  "key": "eliminations",
+                  "label": "Eliminations",
+                  "value": 99999
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "console": null
+  }
+}
