@@ -10,12 +10,13 @@ import {
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
-  addCareerRows, addRankRows, createHistory, dayWindows, historyToSamples, overlayLatestFields, parseArgs,
-  runBackfill,
+  addCareerRows, addRankRows, createHistory, dayWindows, dropLaggingHeroRows, historyToSamples, overlayLatestFields,
+  parseArgs, runBackfill,
 } from './backfill-from-db.mjs';
 import { extractSample } from './extract.mjs';
 import { legacySamplesByDay, replayDays } from './replay.mjs';
 import { emptyStore, globalRows, loadStore, seasonRows } from './store.mjs';
+import { isoDay } from './util.mjs';
 import { validateDataDir } from './validate.mjs';
 import {
   DAY, FIXTURE_PLAYERS, HOUR, LEGACY_SNAPSHOTS_DIR, at, careerOf, loadFixture, makeSample, tmpDir,
@@ -153,6 +154,8 @@ const NOW = at('2026-10-03T06:00:00Z'); // day 32: windows start D0, D0+14d, D0+
 const dayAt = (i) => D0 + i * DAY;
 const stamp = (i) => dayAt(i) + 12 * HOUR;
 
+const ZARYA = careerOf({ eliminations: 77, deaths: 10, assists: 5, gamesPlayed: 9, timePlayed: 1234 });
+
 function alphaSample(i) {
   const old = i < 20;
   const k = old ? i : i - 20;
@@ -169,7 +172,11 @@ function alphaSample(i) {
     career: {
       'all-heroes': careerOf(all),
       ana: careerOf({ ...all, eliminations: all.eliminations - 100, healingDone: 900 + 10 * i, healingPer10Min: 55.5, winPercentage: 61 }),
-      mercy: careerOf({ eliminations: 40 + i, deaths: 20, assists: 30, gamesPlayed: 5, timePlayed: 700 + 10 * i }),
+      mercy: old
+        ? careerOf({ eliminations: 40 + i, deaths: 20, assists: 30, gamesPlayed: 5, timePlayed: 700 + 10 * i })
+        : careerOf({ eliminations: 4, deaths: 2, assists: 3, gamesPlayed: 1 + k, timePlayed: 80 + 10 * k }),
+      // Played last season only: its last season-24 row is day 19.
+      ...(old ? { zarya: ZARYA } : {}),
     },
   });
 }
@@ -199,6 +206,10 @@ function dbScenario() {
     rank.push(...rows.rank);
     career.push(...rows.career);
   }
+  // The daily table keeps each series' last sample of the day: on the reset day
+  // (20) Zarya, untouched since, still carries her pre-reset totals. These are
+  // not in `samples` (the clean history); the backfill has to drop them.
+  career.push(...narrowRows({ player: 'Alpha-1', day: dayAt(20), ranks: [], career: { zarya: ZARYA } }).career);
   // Rows the SQL must keep out: another player, another gamemode, another
   // platform, and a metric nobody asked for.
   const decoyDay = new Date(dayAt(3));
@@ -371,6 +382,73 @@ test('B4: overlayLatestFields fills null healing/win fields on the last sample o
   assert.deepEqual(pick(day1.career['all-heroes']), [null, null, null, null]);
 });
 
+test('B4b: dropLaggingHeroRows keeps only post-reset heroes on a counter-reset day', () => {
+  const hero = (gamesPlayed, timePlayed, over = {}) => ({
+    eliminations: 10, deaths: 5, assists: 3, healingDone: null, healingPer10Min: null, gamesWon: null, gamesPlayed, winPercentage: null, timePlayed, ...over,
+  });
+  const sample = (player, i, career) => ({ player, day: dayAt(i), fetchedAt: stamp(i), rankSeason: null, ranks: [], profile: null, career });
+  // P-1 resets on day 1; Q-2 never does.
+  const build = () => [
+    [dayAt(0), [
+      sample('P-1', 0, {
+        'all-heroes': hero(100, 10_000, { eliminations: 1000 }),
+        stale: hero(10, 1000), decreased: hero(20, 2000), higher: hero(10, 1000), fewerHours: hero(5, 900), gone: hero(7, 700),
+      }),
+      sample('Q-2', 0, { 'all-heroes': hero(50, 5000), a: hero(5, 500) }),
+    ]],
+    [dayAt(1), [
+      sample('P-1', 1, {
+        'all-heroes': hero(3, 2000, { eliminations: 20 }),
+        stale: hero(10, 1000), // unchanged: a pre-reset leftover
+        decreased: hero(2, 300), // went back down: played after the reset
+        higher: hero(12, 1500), // higher than before is still not a new-season value
+        fewerHours: hero(5, 400), // same games, less time: counts
+        fresh: hero(1, 100), // new to the player
+      }),
+      sample('Q-2', 1, { 'all-heroes': hero(51, 5100), a: hero(5, 500) }),
+    ]],
+    [dayAt(2), [
+      // Not a reset day, so nothing is dropped, even a hero equal to the day before.
+      sample('P-1', 2, { 'all-heroes': hero(5, 2600, { eliminations: 40 }), stale: hero(10, 1000), decreased: hero(3, 400), fresh: hero(2, 200) }),
+    ]],
+  ];
+
+  const days = build();
+  const resets = dropLaggingHeroRows(days);
+  assert.deepEqual(resets, [{ day: dayAt(1), player: 'P-1', dropped: ['stale', 'higher'], kept: 3 }]);
+  assert.deepEqual(Object.keys(days[1][1][0].career), ['all-heroes', 'decreased', 'fewerHours', 'fresh']);
+  assert.equal(days[1][1][0].career['all-heroes'].timePlayed, 2000, 'DB mode keeps the real all-heroes time');
+  assert.deepEqual(days[1][1][1], build()[1][1][1], 'a player who did not reset is untouched');
+  assert.deepEqual(days[0], build()[0], 'earlier days are untouched');
+  assert.deepEqual(days[2], build()[2], 'so are later days');
+
+  // Snapshots mode redoes the all-heroes time as the sum over the kept heroes.
+  const summed = build();
+  dropLaggingHeroRows(summed, { recomputeAllHeroesTime: true });
+  assert.equal(summed[1][1][0].career['all-heroes'].timePlayed, 300 + 400 + 100);
+  assert.equal(summed[1][1][0].career['all-heroes'].eliminations, 20);
+
+  // Each reset is judged against the previous *unfiltered* sample: R-3 resets
+  // on day 1 (x is a leftover, dropped) and again on day 2, where x is still
+  // identical to its day-1 value. Judged against the filtered day 1 (where x
+  // is absent) it would look new and survive.
+  const twice = [
+    [dayAt(0), [sample('R-3', 0, { 'all-heroes': hero(100, 10_000), x: hero(10, 1000), y: hero(20, 2000) })]],
+    [dayAt(1), [sample('R-3', 1, { 'all-heroes': hero(4, 900), x: hero(10, 1000), y: hero(2, 300) })]],
+    [dayAt(2), [sample('R-3', 2, { 'all-heroes': hero(1, 200), x: hero(10, 1000), y: hero(1, 100) })]],
+  ];
+  assert.deepEqual(dropLaggingHeroRows(twice).map((r) => [r.day, r.dropped]), [[dayAt(1), ['x']], [dayAt(2), ['x']]]);
+  assert.deepEqual(Object.keys(twice[2][1][0].career), ['all-heroes', 'y']);
+
+  // A private profile (career null) in between neither throws nor resets the comparison.
+  const gap = [
+    [dayAt(0), [sample('S-4', 0, { 'all-heroes': hero(100, 10_000), x: hero(10, 1000) })]],
+    [dayAt(1), [sample('S-4', 1, null)]],
+    [dayAt(2), [sample('S-4', 2, { 'all-heroes': hero(2, 100), x: hero(10, 1000) })]],
+  ];
+  assert.deepEqual(dropLaggingHeroRows(gap).map((r) => [r.day, r.dropped]), [[dayAt(2), ['x']]]);
+});
+
 // --- DB path --------------------------------------------------------------------
 
 test('B5: DB mode walks ow_stats_daily in 14-day windows and pivots rows into the right seasons', async () => {
@@ -418,6 +496,14 @@ test('B5: DB mode walks ow_stats_daily in 14-day windows and pivots rows into th
   assert.equal(result.store.state.currentSeasonDetectedAt, stamp(20));
   assert.equal(seasonRows(result.store, 24, 'rankDaily').filter((r) => r.player === 'Beta-2').length, 20 - 1, 'day 5 missing');
   assert.ok(!result.store.state.players['Ghost-9']);
+  // The stale reset-day Zarya row (last season's totals) was dropped, so she
+  // lives in season 24 only, with her last real row from day 19. (The
+  // differential check above already proves nothing else differs.)
+  assert.deepEqual(result.lagging, [{ day: dayAt(20), player: 'Alpha-1', dropped: ['zarya'], kept: 2 }]);
+  assert.deepEqual(seasonRows(result.store, 25, 'careerHeroDaily').filter((r) => r.hero === 'zarya'), []);
+  assert.deepEqual(seasonRows(result.store, 25, 'careerLatest').filter((r) => r.hero === 'zarya'), []);
+  assert.equal(seasonRows(result.store, 24, 'careerLatest').find((r) => r.hero === 'zarya').time, stamp(19));
+  assert.ok(lines.some((l) => l.includes('2026-09-21  Alpha-1: dropped 1, kept 2')));
 
   // The timeline the scenario was built to produce.
   assert.deepEqual(result.events, [
@@ -630,6 +716,19 @@ function stageLegacy(dataDir) {
   return dir;
 }
 
+// The first / last careerHeroDaily row of every (player, hero) series in a season.
+function edgeRows(store, season, pick) {
+  const out = new Map();
+  for (const row of seasonRows(store, season, 'careerHeroDaily')) {
+    const key = `${row.player}|${row.hero}`;
+    const have = out.get(key);
+    if (!have || pick(row.day, have.day)) out.set(key, row);
+  }
+  return out;
+}
+const firstRows = (store, season) => edgeRows(store, season, (a, b) => a < b);
+const lastRows = (store, season) => edgeRows(store, season, (a, b) => a > b);
+
 test('B12: --from-snapshots reproduces the PRD season timeline from the legacy files', { skip: haveLegacy ? false : 'docs/data/snapshots not present' }, async () => {
   // --from-snapshots points at <data-dir>/snapshots itself: everything must be
   // read before meta/rank-current/profiles are overwritten.
@@ -693,8 +792,14 @@ test('B12: --from-snapshots reproduces the PRD season timeline from the legacy f
   for (const rel of ['pipeline/state.json', 'snapshots/meta.json', 'snapshots/rank-current.json', 'snapshots/profiles.json']) assert.ok(tree.has(rel), rel);
   const check = validateDataDir(dataDir, { now });
   assert.deepEqual(check.errors, []);
-  // Per-hero rows lag a season reset in the DB's daily table, which the validator flags as falling counters.
+  // Without the reset-day cleanup the daily table's lagging per-hero rows made
+  // 69 (season 24) and 106 (season 25) counters fall. Two remain, both in
+  // season 24: reset-day rows (DarthKcaj domina, orisa) that mix one stale
+  // metric into an otherwise new-season row.
+  const falls = check.warnings.filter((w) => /counter values fall/.test(w));
   assert.deepEqual(check.warnings.filter((w) => !/counter values fall/.test(w)), []);
+  assert.ok(falls.every((w) => w.startsWith('seasons/24/career-hero-daily.json')), falls.join('\n'));
+  assert.ok(falls.reduce((n, w) => n + Number(/: (\d+) counter values fall/.exec(w)[1]), 0) <= 2, falls.join('\n'));
 
   // Legacy flat files are untouched; profiles survived the overwrite; rank-current comes from the replay.
   assert.deepEqual(flat.map((n) => readFileSync(join(snapshots, `${n}.json`), 'utf8')), flatBefore);
@@ -715,6 +820,31 @@ test('B12: --from-snapshots reproduces the PRD season timeline from the legacy f
   const legacyDays = JSON.parse(flatBefore[1]).rows.filter((r) => r.player === 'DarthKcaj-1443' && r.day >= at('2026-10-08T00:00:00Z')).map((r) => r.day);
   assert.deepEqual(seasonRows(result.store, 25, 'careerDaily').filter((r) => r.player === 'DarthKcaj-1443').map((r) => r.day), legacyDays);
 
+  // No season starts with a verbatim copy of last season's hero rows: the
+  // daily table's pre-reset leftovers on a reset day were dropped.
+  assert.deepEqual(result.lagging.map((l) => [isoDay(l.day), l.player]), [
+    ['2026-08-12', 'DarthKcaj-1443'], ['2026-08-17', 'Kieness-6123'], ['2026-08-21', 'Tones-11680'],
+    ['2026-08-28', 'KiwiCore-1324'], ['2026-10-08', 'DarthKcaj-1443'],
+  ]);
+  for (const season of [24, 25]) {
+    for (const [key, first] of firstRows(result.store, season)) {
+      const earlier = [22, 23, 24].filter((s) => s < season)
+        .map((s) => lastRows(result.store, s).get(key)).filter(Boolean).pop();
+      if (!earlier || first.timePlayed === null) continue;
+      assert.ok(
+        first.gamesPlayed !== earlier.gamesPlayed || first.timePlayed !== earlier.timePlayed,
+        `season ${season} ${key} starts with last season's final row (${isoDay(first.day)})`,
+      );
+    }
+  }
+  const darthHeroes = seasonRows(result.store, 25, 'careerLatest').filter((r) => r.player === 'DarthKcaj-1443').map((r) => r.hero);
+  assert.ok(!darthHeroes.includes('baptiste') && !darthHeroes.includes('hazard'), 'stale 10-08 rows left out of season 25');
+  const darthPlayed = new Set(seasonRows(result.store, 25, 'careerHeroDaily').filter((r) => r.player === 'DarthKcaj-1443').map((r) => r.hero));
+  assert.deepEqual(darthHeroes.filter((h) => h !== 'all-heroes' && !darthPlayed.has(h)), [], 'every season-25 hero has a daily row');
+  // They are still there, with their real totals, in season 24.
+  const s24 = seasonRows(result.store, 24, 'careerLatest').filter((r) => r.player === 'DarthKcaj-1443').map((r) => r.hero);
+  assert.ok(s24.includes('baptiste'));
+
   // A rerun needs --force, and with it rebuilds the identical tree (the legacy
   // profiles it now reads back are the ones it wrote).
   await assert.rejects(runBackfill(['--data-dir', dataDir, '--from-snapshots', snapshots], { now, log: () => {} }), /--force/);
@@ -723,7 +853,7 @@ test('B12: --from-snapshots reproduces the PRD season timeline from the legacy f
   assert.deepEqual(readTree(dataDir), first);
 });
 
-test('B13: --from-snapshots over the same files matches replaying legacySamplesByDay directly', { skip: haveLegacy ? false : 'docs/data/snapshots not present' }, async () => {
+test('B13: --from-snapshots matches replaying the cleaned legacySamplesByDay directly, and the cleanup matters', { skip: haveLegacy ? false : 'docs/data/snapshots not present' }, async () => {
   const dataDir = tmpDir();
   const snapshots = stageLegacy(dataDir);
   const result = await runBackfill(['--data-dir', dataDir, '--from-snapshots', snapshots], { now: LAST_DAY + 14 * HOUR, log: () => {} });
@@ -734,11 +864,28 @@ test('B13: --from-snapshots over the same files matches replaying legacySamplesB
     careerHeroDaily: JSON.parse(readFileSync(join(snapshots, 'career-hero-daily.json'), 'utf8')).rows,
   };
   const direct = emptyStore();
-  replayDays(direct, legacySamplesByDay(legacy), {});
+  const cleaned = legacySamplesByDay(legacy);
+  dropLaggingHeroRows(cleaned, { recomputeAllHeroesTime: true });
+  replayDays(direct, cleaned, {});
   for (const season of [22, 23, 24, 25]) {
     for (const name of ['rankDaily', 'careerDaily', 'careerHeroDaily']) {
       assert.deepEqual(seasonRows(result.store, season, name), seasonRows(direct, season, name), `season ${season} ${name}`);
     }
   }
   assert.deepEqual(result.store.state.players, direct.state.players);
+
+  // Replaying the raw samples instead keeps the same seasons and the same
+  // rank/all-heroes rows, but files last season's leftovers under the new one.
+  const raw = emptyStore();
+  replayDays(raw, legacySamplesByDay(legacy), {});
+  assert.deepEqual(raw.state.players, direct.state.players);
+  for (const season of [24, 25]) {
+    for (const name of ['rankDaily', 'careerDaily']) {
+      assert.deepEqual(seasonRows(raw, season, name), seasonRows(direct, season, name), `season ${season} ${name}`);
+    }
+    assert.ok(
+      seasonRows(raw, season, 'careerHeroDaily').length > seasonRows(direct, season, 'careerHeroDaily').length,
+      `season ${season}: the raw replay has leftover hero rows`,
+    );
+  }
 });
