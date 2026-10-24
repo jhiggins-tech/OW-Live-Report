@@ -10,9 +10,9 @@ const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 
 // career_stats_* doesn't tag rows with role, so role is derived from hero via
 // HERO_CATALOG. Heroes not in the catalog are skipped to avoid mislabeling.
-export async function fetchPlayerRoleBreakdown(playerId: string): Promise<RoleBreakdownEntry[]> {
-  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
-  const { rows: snapshot } = await loadCareerLatest();
+export async function fetchPlayerRoleBreakdown(playerId: string, season?: number): Promise<RoleBreakdownEntry[]> {
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason, season);
+  const { rows: snapshot } = await loadCareerLatest(season);
 
   interface PerHero {
     e: number | null;

@@ -6,9 +6,9 @@ import { ONE_GAME_OUTLIER_WIN_RATE, TIME_WINDOWS } from '../_constants';
 import type { HeroLeaderboardRow } from '../../../../types/models';
 import type { CareerLatestRow } from '../../../../types/snapshots';
 
-export async function fetchPlayerHeroLeaderboard(playerId: string): Promise<HeroLeaderboardRow[]> {
-  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
-  const { rows: snapshot } = await loadCareerLatest();
+export async function fetchPlayerHeroLeaderboard(playerId: string, season?: number): Promise<HeroLeaderboardRow[]> {
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason, season);
+  const { rows: snapshot } = await loadCareerLatest(season);
 
   const byHero = new Map<string, CareerLatestRow>();
   for (const r of snapshot) {

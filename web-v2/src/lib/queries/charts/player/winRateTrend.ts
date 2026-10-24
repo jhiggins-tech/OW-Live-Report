@@ -1,5 +1,6 @@
 import { loadCareerDaily } from '../../../snapshotClient';
 import { safeNumber } from '../../../normalize/kda';
+import { windowEnd } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 
 export interface PlayerWinRatePoint {
@@ -7,11 +8,11 @@ export interface PlayerWinRatePoint {
   winRate: number | null;
 }
 
-export async function fetchPlayerWinRateTrend(playerId: string): Promise<PlayerWinRatePoint[]> {
-  const cutoff = Date.now() - TIME_WINDOWS.playerSeason;
+export async function fetchPlayerWinRateTrend(playerId: string, season?: number): Promise<PlayerWinRatePoint[]> {
+  const cutoff = (await windowEnd(season)) - TIME_WINDOWS.playerSeason;
   // See team/statCards.ts for why we read games_won/games_played at
   // hero='all-heroes' instead of win_percentage.
-  const { rows } = await loadCareerDaily();
+  const { rows } = await loadCareerDaily(season);
   return rows
     .filter((r) => r.player === playerId && r.day >= cutoff)
     .map((r) => {

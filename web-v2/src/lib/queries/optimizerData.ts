@@ -62,12 +62,12 @@ function blankRoleStats(role: Role): PlayerRoleStats {
   };
 }
 
-export async function fetchOptimizerData(players: RosterPlayer[]): Promise<PlayerOptimizerData[]> {
+export async function fetchOptimizerData(players: RosterPlayer[], season?: number): Promise<PlayerOptimizerData[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
-  const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.playerSeason);
+  const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.playerSeason, season);
 
-  const [career, ranks, meta] = await Promise.all([loadCareerLatest(), loadRankCurrent(), loadMeta()]);
+  const [career, ranks, meta] = await Promise.all([loadCareerLatest(season), loadRankCurrent(season), loadMeta()]);
 
   interface PerHero {
     e: number | null;
@@ -101,24 +101,26 @@ export async function fetchOptimizerData(players: RosterPlayer[]): Promise<Playe
   // Last-season fallback: a player with no current-season data (counters
   // still on an earlier season, or reset and not yet played) is rated from
   // one snapshot of the season their counters belong to. Fallback rows skip
-  // the season cutoff, which would filter them all out.
+  // the season cutoff, which would filter them all out. Only when viewing the
+  // current season; a past season shows just what that season holds.
   const dataSeasonByPlayer = new Map<string, number>();
-  if (meta.layoutVersion === 2 && meta.playerSeason) {
+  const viewingCurrent = season === undefined || season === meta.currentSeason;
+  if (viewingCurrent && meta.layoutVersion === 2 && meta.playerSeason) {
     const bySeason = new Map<number, Set<string>>();
     for (const id of ids) {
-      const season = meta.playerSeason[id];
-      if (season === undefined || season === meta.currentSeason || heroData.has(id)) continue;
-      const group = bySeason.get(season) ?? new Set<string>();
+      const fromSeason = meta.playerSeason[id];
+      if (fromSeason === undefined || fromSeason === meta.currentSeason || heroData.has(id)) continue;
+      const group = bySeason.get(fromSeason) ?? new Set<string>();
       group.add(id);
-      bySeason.set(season, group);
+      bySeason.set(fromSeason, group);
     }
-    await Promise.all([...bySeason].map(async ([season, group]) => {
+    await Promise.all([...bySeason].map(async ([fromSeason, group]) => {
       try {
-        const { rows } = await loadCareerLatest(season);
+        const { rows } = await loadCareerLatest(fromSeason);
         for (const r of rows) {
           if (!group.has(r.player)) continue;
           addHeroRow(r);
-          if (heroData.has(r.player)) dataSeasonByPlayer.set(r.player, season);
+          if (heroData.has(r.player)) dataSeasonByPlayer.set(r.player, fromSeason);
         }
       } catch {
         // Optional extra data; the optimizer still works without it.

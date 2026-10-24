@@ -1,6 +1,7 @@
 import { loadProfiles } from '../../../snapshotClient';
 import { safeNumber } from '../../../normalize/kda';
 import { playerIdSet } from '../../_shared';
+import { windowEnd } from '../../seasonWindow';
 import { fetchSupportingStats } from '../../supportingStats';
 import type { RosterPlayer } from '../../../../types/models';
 
@@ -15,7 +16,7 @@ export interface TeamStatCards {
   newestSeenAt: number | null;
 }
 
-export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamStatCards> {
+export async function fetchTeamStatCards(players: RosterPlayer[], season?: number): Promise<TeamStatCards> {
   if (!players.length) {
     return {
       trackedPlayers: 0,
@@ -34,7 +35,7 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
   // the scraper" timestamp (there is no last_updated_at field on the schema).
   const [profiles, supporting] = await Promise.all([
     loadProfiles(),
-    fetchSupportingStats(players.map((p) => p.playerId)),
+    fetchSupportingStats(players.map((p) => p.playerId), season),
   ]);
 
   const newestByPlayer = new Map<string, number>();
@@ -73,7 +74,7 @@ export async function fetchTeamStatCards(players: RosterPlayer[]): Promise<TeamS
     }
   }
 
-  const freshCutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  const freshCutoff = (await windowEnd(season)) - 14 * 24 * 60 * 60 * 1000;
   let freshPlayers = 0;
   for (const p of players) {
     const seenAt = newestByPlayer.get(p.playerId);

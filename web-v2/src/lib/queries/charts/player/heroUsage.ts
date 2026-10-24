@@ -14,10 +14,10 @@ export interface PlayerHeroUsageResult {
   heroOrder: Array<{ key: string; pretty: string; total: number }>;
 }
 
-export async function fetchPlayerHeroUsage(playerId: string): Promise<PlayerHeroUsageResult> {
+export async function fetchPlayerHeroUsage(playerId: string, season?: number): Promise<PlayerHeroUsageResult> {
   const bucket = BUCKETS.heroUsage;
-  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
-  const { rows } = await loadCareerHeroDaily();
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason, season);
+  const { rows } = await loadCareerHeroDaily(season);
 
   // Weekly buckets over the daily series; the last day in a bucket wins,
   // mirroring the old GROUP BY time(1w) + last() roll-up of a cumulative

@@ -6,11 +6,11 @@ import { currentSeasonCutoff } from '../../seasonWindow';
 import { TIME_WINDOWS, getTopHeroCount } from '../_constants';
 import type { HeroPoolEntry, RosterPlayer } from '../../../../types/models';
 
-export async function fetchTeamHeroPool(players: RosterPlayer[]): Promise<HeroPoolEntry[]> {
+export async function fetchTeamHeroPool(players: RosterPlayer[], season?: number): Promise<HeroPoolEntry[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
-  const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.heroLatest);
-  const { rows } = await loadCareerLatest();
+  const cutoff = await currentSeasonCutoff(players, TIME_WINDOWS.heroLatest, season);
+  const { rows } = await loadCareerLatest(season);
 
   const totals = new Map<string, number>();
   for (const r of rows) {

@@ -9,10 +9,10 @@ export interface PlayerHeroPerfPoint {
   byHero: Record<string, number | null>; // hero key -> KDA in bucket
 }
 
-export async function fetchPlayerHeroPerf(playerId: string): Promise<PlayerHeroPerfPoint[]> {
+export async function fetchPlayerHeroPerf(playerId: string, season?: number): Promise<PlayerHeroPerfPoint[]> {
   const bucket = BUCKETS.heroPerf;
-  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason);
-  const { rows } = await loadCareerHeroDaily();
+  const cutoff = await currentSeasonCutoff([playerId], TIME_WINDOWS.playerSeason, season);
+  const { rows } = await loadCareerHeroDaily(season);
 
   // Weekly buckets, last day in the bucket wins. A combat sample (elims or
   // deaths present) is what puts a hero on the chart for a bucket, matching

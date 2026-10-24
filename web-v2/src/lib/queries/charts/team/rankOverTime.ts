@@ -1,6 +1,7 @@
 import { loadRankDaily } from '../../../snapshotClient';
 import { rankOrdinal } from '../../../normalize/rankOrdinal';
 import { playerIdSet } from '../../_shared';
+import { windowEnd } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 import type { Role, RosterPlayer } from '../../../../types/models';
 
@@ -14,11 +15,11 @@ export interface TeamRankPoint {
 
 const ROLES: readonly Role[] = ['tank', 'damage', 'support'];
 
-export async function fetchTeamRankOverTime(players: RosterPlayer[]): Promise<TeamRankPoint[]> {
+export async function fetchTeamRankOverTime(players: RosterPlayer[], season?: number): Promise<TeamRankPoint[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
-  const cutoff = Date.now() - TIME_WINDOWS.teamSeason;
-  const { rows } = await loadRankDaily();
+  const cutoff = (await windowEnd(season)) - TIME_WINDOWS.teamSeason;
+  const { rows } = await loadRankDaily(season);
 
   interface BucketAcc {
     byRoleOrdinals: Record<Role, number[]>;

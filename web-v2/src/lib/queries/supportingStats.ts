@@ -23,12 +23,15 @@ function assistsPerDeathFrom(assists: number | null, deaths: number | null): num
   return assists / Math.max(deaths, 1);
 }
 
-export async function fetchSupportingStats(playerIds: readonly string[]): Promise<Map<string, SupportingStats>> {
+export async function fetchSupportingStats(
+  playerIds: readonly string[],
+  season?: number,
+): Promise<Map<string, SupportingStats>> {
   const out = new Map<string, SupportingStats>();
   if (!playerIds.length) return out;
 
   const ids = new Set(playerIds);
-  const { rows } = await loadCareerLatest();
+  const { rows } = await loadCareerLatest(season);
 
   for (const r of rows) {
     if (r.hero !== 'all-heroes' || !ids.has(r.player)) continue;

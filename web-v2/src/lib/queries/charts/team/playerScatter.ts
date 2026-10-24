@@ -1,15 +1,16 @@
 import { loadCareerLatest } from '../../../snapshotClient';
 import { kdaFrom } from '../../../normalize/kda';
 import { playerIdSet } from '../../_shared';
+import { windowEnd } from '../../seasonWindow';
 import { TIME_WINDOWS } from '../_constants';
 import type { PlayerStatPoint, RosterPlayer } from '../../../../types/models';
 import type { CareerLatestRow } from '../../../../types/snapshots';
 
-export async function fetchPlayerScatter(players: RosterPlayer[]): Promise<PlayerStatPoint[]> {
+export async function fetchPlayerScatter(players: RosterPlayer[], season?: number): Promise<PlayerStatPoint[]> {
   if (!players.length) return [];
   const ids = playerIdSet(players);
-  const cutoff = Date.now() - TIME_WINDOWS.scatter;
-  const { rows } = await loadCareerLatest();
+  const cutoff = (await windowEnd(season)) - TIME_WINDOWS.scatter;
+  const { rows } = await loadCareerLatest(season);
 
   // Latest all-heroes aggregate per player, provided it's fresh enough for
   // the scatter's window — matching the old `time > now() - 7d` predicate.
