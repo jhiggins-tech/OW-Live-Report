@@ -553,6 +553,12 @@ function writeSample(store, s, { season, current, writeCareer }) {
 | Last-wins | `tier, division, season, healingPer10Min, winPercentage`, all profile fields | the incoming value, including `null` |
 | `time` (latest/current rows) | | `max(existing.time, incoming.time)` |
 
+`career-latest.json` rows are only max-merged with a row from the **same UTC
+day**. A row from an earlier day is replaced (last-wins, `time` still max), so
+one transient high reading can't stick for the rest of the season. In
+replays, per-hero rows that lag a reset would otherwise pin an inflated
+total and trigger false `post-grace-change` moves. (Found during WP1.)
+
 **Write rule.**
 
 - **Current season**: always upsert today's row. Players who belong to the
