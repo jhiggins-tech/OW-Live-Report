@@ -1,6 +1,6 @@
 # PRD — V3: retire the stats database; poll OverFast into static season snapshots
 
-**Status:** Proposed — awaiting sign-off
+**Status:** Approved 2026-10-24 — in progress on the `jhiggins-tech` fork first
 **Owner:** unassigned (split across agents; see [Work packages](#work-packages))
 **Related:** [v2.3 InfluxQL → SQL migration](./v2.3-influxql-to-sql-migration.md)
 (superseded when this ships) · backend repo `jhiggins-tech/ow-stats-influxdb`
@@ -131,8 +131,8 @@ with upstream.
 | D1 | Poll schedule | `37 9,21 * * *` UTC (≈ 20:37 and 08:37 Sydney during AEDT). 21:37 UTC catches the 11–20 UTC change window; 09:37 catches stragglers. The off-the-hour minute avoids GitHub's top-of-hour queueing. |
 | D2 | Roll-up rule | Counters (`eliminations, deaths, assists, healingDone, gamesWon, gamesPlayed, timePlayed`) take **MAX** within the day. Rank fields (`tier, division, season`), rates (`healingPer10Min, winPercentage`) and profile text take the **last value of the day**. MAX is wrong for rank: `tier` is an inverted division number (1 is the best) and `division` is text. |
 | D3 | Day boundary | UTC midnight, same as today's data. AU evening sessions (09–14 UTC) fall inside one UTC day. |
-| D4 | Canonical repo | Polling runs only in `mattjsawyer/ow-live-report` (the repo Pages serves), gated by the repository variable `OW_POLL_ENABLED=true`. Forks never write data. |
-| D5 | What resets each season | **Stats reset**: every chart, stat card, hero pool, leaderboard and the optimizer's hero data reads only the current season's files. **Rank is carried over**: `rank-current.json` keeps each player's last known rank tagged with its season (today's behaviour, and the rank cards already show the season label). |
+| D4 | Canonical repo | **Phase 1 (approved): the `jhiggins-tech/OW-Live-Report` fork.** Get it working there end to end first; `mattjsawyer/ow-live-report` follows later. Polling runs only where the repository variable `OW_POLL_ENABLED=true` is set, so whichever repo doesn't set it never writes data. |
+| D5 | What resets each season | **Stats reset**: every chart, stat card, hero pool and leaderboard reads only the current season's files. **Optimizer exception (approved):** a player with no current-season data falls back to one snapshot of their last season, i.e. that season's `career-latest.json` rows, labelled with the season (WP7b, now in scope as part of WP4). **Rank is carried over**: `rank-current.json` keeps each player's last known rank tagged with its season (today's behaviour, and the rank cards already show the season label). |
 | D6 | History | Backfill the DB's full daily history into `seasons/<N>/` (WP3) before the DB is retired. |
 
 ---
@@ -1104,7 +1104,17 @@ Acceptance: `pnpm test:pipeline` green on Node 20 and 22; no dependency changes;
 
 **Owns:** `web-v2/src/**`, `web-v2/vite.config.ts`, `.github/workflows/deploy.yml`, `README.md`.
 
-Implement [Frontend changes](#frontend-changes-wp4) items 1–6 and 8.
+Implement [Frontend changes](#frontend-changes-wp4) items 1–6 and 8, **plus
+the optimizer fallback (WP7b, approved).** In `lib/queries/optimizerData.ts`,
+when `meta.layoutVersion === 2`, a roster player with no rows in the current
+season's `career-latest.json` uses their rows from
+`seasons/<meta.playerSeason[player]>/career-latest.json` instead (load it with
+`loadCareerLatest(season)`; skip it when `playerSeason` is missing or equals
+the current season). Fallback rows skip the season `cutoff` filter. Expose
+the season the data came from on the per-player optimizer result (for
+example `dataSeason: number | null`, null meaning the current season), and
+show a small label such as "S24 data" on that player's optimizer card. Only
+the optimizer falls back; nothing else does.
 
 To test without WP3, build a throwaway v2 tree in a temp copy of `docs/`:
 copy `docs/data/snapshots/{rank-daily,career-latest,career-daily,career-hero-daily}.json`
@@ -1124,6 +1134,7 @@ Acceptance:
 
 ### WP5 — Cutover runbook *(👤 = a person with repo admin on `mattjsawyer/ow-live-report`; 🤖 = an agent)*
 
+Run this on the fork (`jhiggins-tech/OW-Live-Report`) first, per D4.
 Preconditions: WP1–WP4 merged into the canonical repo's `main`; the deploy is
 green; the site looks unchanged (legacy layout).
 
@@ -1178,9 +1189,7 @@ snapshots**. The SPA falls back to the legacy layout by itself.
   `?season=N` query param; the loaders already take `season`. For archived
   seasons, the `Date.now()`-relative cutoffs in `TIME_WINDOWS` users must
   become relative to that season's `lastDay`.
-- **b. Optimizer previous-season fallback.** At season start the optimizer has
-  no hero data until people play. Per player, fall back to their latest
-  season's `career-latest.json`, with a label.
+- **b. Optimizer previous-season fallback.** *Approved and moved into WP4.*
 - **c. Bake OverFast hero meta** (`/heroes`, `/heroes/stats`) and per-player
   summaries into the poll, so the browser makes no third-party calls.
 - **d. Use `profiles.lastUpdatedAt`** for the "fresh players" stat card
@@ -1226,12 +1235,12 @@ Two agents can start right after WP0 (WP1 and WP4), and two more after WP1 (WP2 
 
 ## Open questions
 
-1. **D4:** is `mattjsawyer/ow-live-report` definitely the canonical repo? Matt
-   needs to add the `OW_POLL_ENABLED` variable and run the cutover workflows
-   (or grant access).
-2. **D5:** is a hard stats reset right for the optimizer, which is empty
-   until players play in a new season? If not, pull WP7b into scope.
-3. **D1:** do the poll times suit you? Players are in AU, and changes land 11–20 UTC.
+Resolved 2026-10-24: D4 → fork first (`jhiggins-tech/OW-Live-Report`),
+upstream later; D5 → stats reset, optimizer falls back to one snapshot of last
+season (WP7b in scope); D1 → poll times approved.
+
+Still open: moving to `mattjsawyer/ow-live-report` after the fork has soaked
+(Matt sets `OW_POLL_ENABLED` there and runs WP5 on upstream).
 
 ## Estimated effort
 
