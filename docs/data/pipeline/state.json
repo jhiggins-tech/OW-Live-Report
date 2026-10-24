@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "currentSeason": 25,
+  "currentSeasonDetectedAt": 1791460800000,
+  "players": {
+    "DarthKcaj-1443": {
+      "season": 25,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    },
+    "Kiddo-11482": {
+      "season": 22,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    },
+    "Kieness-6123": {
+      "season": 24,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    },
+    "KiwiCore-1324": {
+      "season": 24,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    },
+    "Lank-21912": {
+      "season": 23,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    },
+    "Shotdownboyz-1119": {
+      "season": 23,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    },
+    "Tones-11680": {
+      "season": 24,
+      "lastFetchedAt": 1792843200000,
+      "lastReason": "unchanged"
+    }
+  }
+}

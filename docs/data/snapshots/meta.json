@@ -1,1 +1,72 @@
-{"generatedAt":1792803080655,"gamemode":"competitive","players":["Kieness-6123","DarthKcaj-1443","KiwiCore-1324","Shotdownboyz-1119","Tones-11680","Lank-21912","Kiddo-11482"],"heartbeatAt":1792801704192,"maxSeason":25,"seasonStart":1791417600000,"seasonByPlayer":{"DarthKcaj-1443":25,"Kiddo-11482":22,"Kieness-6123":24,"KiwiCore-1324":23,"Shotdownboyz-1119":23,"Tones-11680":24}}
+{
+  "layoutVersion": 2,
+  "generatedAt": 1792818644040,
+  "heartbeatAt": 1792818644040,
+  "gamemode": "competitive",
+  "platform": "pc",
+  "players": [
+    "Kieness-6123",
+    "DarthKcaj-1443",
+    "KiwiCore-1324",
+    "Shotdownboyz-1119",
+    "Tones-11680",
+    "Lank-21912",
+    "Kiddo-11482"
+  ],
+  "currentSeason": 25,
+  "maxSeason": 25,
+  "seasonStart": 1791417600000,
+  "seasonByPlayer": {
+    "DarthKcaj-1443": 25,
+    "Kiddo-11482": 22,
+    "Kieness-6123": 24,
+    "KiwiCore-1324": 23,
+    "Shotdownboyz-1119": 23,
+    "Tones-11680": 24
+  },
+  "playerSeason": {
+    "DarthKcaj-1443": 25,
+    "Kiddo-11482": 22,
+    "Kieness-6123": 24,
+    "KiwiCore-1324": 24,
+    "Lank-21912": 23,
+    "Shotdownboyz-1119": 23,
+    "Tones-11680": 24
+  },
+  "seasons": [
+    {
+      "season": 22,
+      "firstDay": 1782518400000,
+      "lastDay": 1782518400000
+    },
+    {
+      "season": 23,
+      "firstDay": 1782518400000,
+      "lastDay": 1786406400000
+    },
+    {
+      "season": 24,
+      "firstDay": 1786492800000,
+      "lastDay": 1791331200000
+    },
+    {
+      "season": 25,
+      "firstDay": 1791417600000,
+      "lastDay": 1792800000000
+    }
+  ],
+  "lastPoll": {
+    "at": 1792818644040,
+    "source": "backfill",
+    "ok": [
+      "Kieness-6123",
+      "DarthKcaj-1443",
+      "KiwiCore-1324",
+      "Shotdownboyz-1119",
+      "Tones-11680",
+      "Lank-21912",
+      "Kiddo-11482"
+    ],
+    "failed": []
+  }
+}
