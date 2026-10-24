@@ -2,13 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchPlayerRankTrend } from '../../lib/queries/charts/player/rankTrend';
 import { rankLabelFromOrdinal } from '../../lib/normalize/rankOrdinal';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
 export default function PlayerRankTrend({ playerId }: { playerId: string }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'rankTrend', playerId],
-    queryFn: () => fetchPlayerRankTrend(playerId),
+    queryKey: ['player', 'rankTrend', playerId, season],
+    queryFn: () => fetchPlayerRankTrend(playerId, season),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load rank trend.</div>;

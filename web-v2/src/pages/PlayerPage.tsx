@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useRoster } from '../hooks/useRoster';
 import { fetchLatestPlayerProfile } from '../lib/queries/latestPlayerProfile';
+import SeasonLink from '../components/SeasonLink';
 import PlayerRankTrend from '../components/charts/PlayerRankTrend';
 import PlayerKdaTrend from '../components/charts/PlayerKdaTrend';
 import PlayerWinRateTrend from '../components/charts/PlayerWinRateTrend';
@@ -70,7 +71,7 @@ export default function PlayerPage() {
       <div className="panel">
         <h2>Player not found</h2>
         <p className="lede">No roster entry matched <code>{slug}</code>.</p>
-        <Link to="/">Back to overview</Link>
+        <SeasonLink to="/">Back to overview</SeasonLink>
       </div>
     );
   }

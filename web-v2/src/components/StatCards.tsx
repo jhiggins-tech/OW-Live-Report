@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchTeamStatCards } from '../lib/queries/charts/team/statCards';
 import { hashPlayerSet } from '../lib/queries/_shared';
 import type { RosterPlayer } from '../types/models';
+import { useSelectedSeason } from '../hooks/useSelectedSeason';
 
 function formatCompact(value: number | null | undefined): string {
   if (value == null) return '—';
@@ -23,9 +24,10 @@ function formatRelative(time: number | null): string {
 }
 
 export default function StatCards({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'statCards', hashPlayerSet(players)],
-    queryFn: () => fetchTeamStatCards(players),
+    queryKey: ['team', 'statCards', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamStatCards(players, season),
     enabled: players.length > 0,
   });
 

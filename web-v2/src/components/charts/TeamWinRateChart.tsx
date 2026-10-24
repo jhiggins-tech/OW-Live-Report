@@ -3,13 +3,15 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { fetchTeamWinRateOverTime } from '../../lib/queries/charts/team/winRateOverTime';
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import type { RosterPlayer } from '../../types/models';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
 export default function TeamWinRateChart({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'winRateOverTime', hashPlayerSet(players)],
-    queryFn: () => fetchTeamWinRateOverTime(players),
+    queryKey: ['team', 'winRateOverTime', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamWinRateOverTime(players, season),
     enabled: players.length > 0,
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;

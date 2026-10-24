@@ -5,6 +5,7 @@ import { fetchTeamHeroPool } from '../../lib/queries/charts/team/heroPool';
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import { useHeroMeta } from '../../hooks/useHeroMeta';
 import type { RosterPlayer } from '../../types/models';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 function fmtHours(seconds: number): string {
   const hrs = seconds / 3600;
@@ -52,9 +53,10 @@ function HeroTick({ x = 0, y = 0, payload, portraitByName }: HeroTickProps) {
 }
 
 export default function HeroPoolBar({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'heroPool', hashPlayerSet(players)],
-    queryFn: () => fetchTeamHeroPool(players),
+    queryKey: ['team', 'heroPool', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamHeroPool(players, season),
     enabled: players.length > 0,
   });
   const meta = useHeroMeta();

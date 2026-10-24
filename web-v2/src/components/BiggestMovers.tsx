@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import SeasonLink from './SeasonLink';
 import { useTeamTrajectories } from '../hooks/useTeamTrajectories';
 import type { TrajectoryResult } from '../lib/trajectory';
 import type { RosterPlayer } from '../types/models';
@@ -66,9 +66,9 @@ export default function BiggestMovers({ players }: { players: RosterPlayer[] }) 
         {movers.map(({ player, traj }) => (
           <div key={player.slug} className="panel" style={{ background: 'var(--panel-strong)' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              <Link to={`/players/${player.slug}`} style={{ color: 'inherit', fontWeight: 600, textDecoration: 'none' }}>
+              <SeasonLink to={`/players/${player.slug}`} style={{ color: 'inherit', fontWeight: 600, textDecoration: 'none' }}>
                 {player.display}
-              </Link>
+              </SeasonLink>
               <span className={`role-pill ${LABEL_TONE[traj.label]}`}>{LABEL_TEXT[traj.label]}</span>
             </div>
             <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 6 }}>

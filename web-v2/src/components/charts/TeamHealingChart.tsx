@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { fetchTeamHealingByHero } from '../../lib/queries/charts/team/healingByHero';
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import type { RosterPlayer } from '../../types/models';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 function fmtCompact(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -11,9 +12,10 @@ function fmtCompact(value: number): string {
 }
 
 export default function TeamHealingChart({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'healingByHero', hashPlayerSet(players)],
-    queryFn: () => fetchTeamHealingByHero(players),
+    queryKey: ['team', 'healingByHero', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamHealingByHero(players, season),
     enabled: players.length > 0,
   });
 

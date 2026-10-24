@@ -4,13 +4,15 @@ import { fetchTeamRankOverTime } from '../../lib/queries/charts/team/rankOverTim
 import { hashPlayerSet } from '../../lib/queries/_shared';
 import { rankLabelFromOrdinal } from '../../lib/normalize/rankOrdinal';
 import type { RosterPlayer } from '../../types/models';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 
 export default function TeamRankChart({ players }: { players: RosterPlayer[] }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['team', 'rankOverTime', hashPlayerSet(players)],
-    queryFn: () => fetchTeamRankOverTime(players),
+    queryKey: ['team', 'rankOverTime', hashPlayerSet(players), season],
+    queryFn: () => fetchTeamRankOverTime(players, season),
     enabled: players.length > 0,
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;

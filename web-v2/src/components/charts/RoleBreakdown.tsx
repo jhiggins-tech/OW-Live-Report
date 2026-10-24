@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchPlayerRoleBreakdown } from '../../lib/queries/charts/player/roleBreakdown';
+import { useSelectedSeason } from '../../hooks/useSelectedSeason';
 
 export default function RoleBreakdown({ playerId }: { playerId: string }) {
+  const { season } = useSelectedSeason();
   const query = useQuery({
-    queryKey: ['player', 'roleBreakdown', playerId],
-    queryFn: () => fetchPlayerRoleBreakdown(playerId),
+    queryKey: ['player', 'roleBreakdown', playerId, season],
+    queryFn: () => fetchPlayerRoleBreakdown(playerId, season),
   });
   if (query.isLoading) return <div className="skeleton chart-wrap" />;
   if (query.isError) return <div className="error">Couldn't load role breakdown.</div>;
